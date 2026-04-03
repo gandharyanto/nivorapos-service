@@ -10,4 +10,5 @@ import java.util.Optional
 interface ProductRepository : JpaRepository<Product, Long>, JpaSpecificationExecutor<Product> {
 
     fun findByIdAndDeletedDateIsNull(id: Long): Optional<Product>
+    fun findByMerchantIdAndDeletedDateIsNull(merchantId: Long): List<Product>
 }

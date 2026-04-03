@@ -17,26 +17,26 @@ data class ProductTaxResponse(
     val taxAmount: BigDecimal?
 )
 
+data class ProductCategoryResponse(
+    val id: Long,
+    val name: String
+)
+
 data class ProductResponse(
     val id: Long,
-    val merchantId: Long,
     val name: String,
-    val price: BigDecimal,
     val sku: String?,
     val upc: String?,
-    val imageUrl: String?,
-    val imageThumbUrl: String?,
     val description: String?,
     val stockMode: String?,
-    val basePrice: BigDecimal?,
-    val isTaxable: Boolean,
-    val taxId: Long?,
-    val tax: ProductTaxResponse?,
+    val basePrice: BigDecimal,
+    val finalPrice: BigDecimal,
+    val isPriceIncludeTax: Boolean,
     val qty: Int,
-    val categories: List<CategoryResponse>,
-    val images: List<ProductImageResponse>,
-    val createdBy: String?,
+    val merchantName: String?,
     val createdDate: LocalDateTime?,
-    val modifiedBy: String?,
-    val modifiedDate: LocalDateTime?
+    val isTaxable: Boolean,
+    val tax: ProductTaxResponse?,
+    val categories: List<ProductCategoryResponse>,
+    val productImages: List<ProductImageResponse>
 )

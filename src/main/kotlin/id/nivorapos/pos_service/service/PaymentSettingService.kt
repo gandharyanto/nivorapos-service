@@ -18,7 +18,8 @@ import java.time.LocalDateTime
 class PaymentSettingService(
     private val paymentSettingRepository: PaymentSettingRepository,
     private val merchantPaymentMethodRepository: MerchantPaymentMethodRepository,
-    private val paymentMethodRepository: PaymentMethodRepository
+    private val paymentMethodRepository: PaymentMethodRepository,
+    private val productService: ProductService
 ) {
 
     fun get(): ApiResponse<PaymentSettingResponse> {
@@ -57,6 +58,7 @@ class PaymentSettingService(
             modifiedDate = now
         )
         val saved = paymentSettingRepository.save(setting)
+        productService.recalculateMerchantPrices(merchantId)
         return ApiResponse.success("Payment setting created", saved.toResponse())
     }
 
@@ -84,6 +86,7 @@ class PaymentSettingService(
         setting.modifiedDate = now
 
         val saved = paymentSettingRepository.save(setting)
+        productService.recalculateMerchantPrices(merchantId)
         return ApiResponse.success("Payment setting updated", saved.toResponse())
     }
 
