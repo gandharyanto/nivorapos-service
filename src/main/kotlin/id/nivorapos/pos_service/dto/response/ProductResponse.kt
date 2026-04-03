@@ -11,11 +11,10 @@ data class ProductImageResponse(
 )
 
 data class ProductTaxResponse(
-    val id: Long,
-    val name: String,
-    val percentage: BigDecimal,
-    val isActive: Boolean,
-    val isDefault: Boolean
+    val taxId: Long?,
+    val taxName: String?,
+    val taxPercentage: BigDecimal?,
+    val taxAmount: BigDecimal?
 )
 
 data class ProductResponse(

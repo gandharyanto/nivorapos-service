@@ -13,6 +13,8 @@ import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.LocalDateTime
 
 @Service
@@ -22,6 +24,7 @@ class ProductService(
     private val productImageRepository: ProductImageRepository,
     private val categoryRepository: CategoryRepository,
     private val stockRepository: StockRepository,
+    private val paymentSettingRepository: PaymentSettingRepository,
     private val taxRepository: TaxRepository
 ) {
 
@@ -179,6 +182,7 @@ class ProductService(
     private fun buildProductResponse(product: Product): ProductResponse {
         val stock = stockRepository.findByProductId(product.id).orElse(null)
         val productCategories = productCategoryRepository.findByProductId(product.id)
+        val paymentSetting = paymentSettingRepository.findByMerchantId(product.merchantId).orElse(null)
         val tax = product.taxId?.let { taxRepository.findById(it).orElse(null) }
         val categories = productCategories.mapNotNull { pc ->
             categoryRepository.findById(pc.categoryId).orElse(null)?.let {
@@ -219,12 +223,18 @@ class ProductService(
             isTaxable = product.isTaxable,
             taxId = product.taxId,
             tax = tax?.let {
+                val taxAmount = calculateItemTaxAmount(
+                    itemPrice = product.price,
+                    isTaxable = product.isTaxable,
+                    isTaxEnabled = paymentSetting?.isTax == true,
+                    isPriceIncludeTax = paymentSetting?.isPriceIncludeTax == true,
+                    percentage = it.percentage
+                )
                 ProductTaxResponse(
-                    id = it.id,
-                    name = it.name,
-                    percentage = it.percentage,
-                    isActive = it.isActive,
-                    isDefault = it.isDefault
+                    taxId = it.id,
+                    taxName = it.name,
+                    taxPercentage = it.percentage,
+                    taxAmount = taxAmount
                 )
             },
             qty = stock?.qty ?: 0,
@@ -235,5 +245,26 @@ class ProductService(
             modifiedBy = product.modifiedBy,
             modifiedDate = product.modifiedDate
         )
+    }
+
+    private fun calculateItemTaxAmount(
+        itemPrice: BigDecimal,
+        isTaxable: Boolean,
+        isTaxEnabled: Boolean,
+        isPriceIncludeTax: Boolean,
+        percentage: BigDecimal
+    ): BigDecimal {
+        if (!isTaxable || !isTaxEnabled || percentage.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+        }
+
+        val hundred = BigDecimal("100")
+        val amount = if (isPriceIncludeTax) {
+            itemPrice.multiply(percentage).divide(hundred.add(percentage), 2, RoundingMode.HALF_UP)
+        } else {
+            itemPrice.multiply(percentage).divide(hundred, 2, RoundingMode.HALF_UP)
+        }
+
+        return amount.setScale(2, RoundingMode.HALF_UP)
     }
 }
