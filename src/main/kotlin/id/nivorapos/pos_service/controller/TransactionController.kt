@@ -1,5 +1,6 @@
 package id.nivorapos.pos_service.controller
 
+import id.nivorapos.pos_service.dto.request.InitiatePaymentRequest
 import id.nivorapos.pos_service.dto.request.TransactionRequest
 import id.nivorapos.pos_service.dto.request.TransactionUpdateRequest
 import id.nivorapos.pos_service.dto.response.ApiResponse
@@ -27,10 +28,8 @@ class TransactionController(
         @RequestParam(defaultValue = "10") size: Int,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) startDate: LocalDate?,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) endDate: LocalDate?,
-        @RequestParam(required = false) sortBy: String?,
-        @RequestParam(required = false) sortType: String?
     ): ResponseEntity<PagedResponse<TransactionListResponse>> {
-        return ResponseEntity.ok(transactionService.list(page, size, startDate?.atStartOfDay(), endDate?.atTime(23, 59, 59), sortBy, sortType))
+        return ResponseEntity.ok(transactionService.list(page, size, startDate?.atStartOfDay(), endDate?.atTime(23, 59, 59)))
     }
 
     @GetMapping("/detail/{id}")
@@ -53,14 +52,40 @@ class TransactionController(
         }
     }
 
-    @PutMapping("/update/{merchantTrxId}")
+    @PutMapping("/update", "/update/")
     @PreAuthorize("hasAuthority('TRANSACTION_UPDATE')")
     fun update(
+        @RequestBody request: TransactionUpdateRequest
+    ): ResponseEntity<ApiResponse<TransactionDetailResponse>> {
+        return try {
+            ResponseEntity.ok(transactionService.update(request))
+        } catch (e: Exception) {
+            ResponseEntity.status(400).body(ApiResponse.error(e.message ?: "Failed to update transaction"))
+        }
+    }
+
+    @PutMapping("/initiate-payment/{merchantTrxId}")
+    @PreAuthorize("hasAuthority('TRANSACTION_UPDATE')")
+    fun initiatePayment(
+        @PathVariable merchantTrxId: String,
+        @RequestBody request: InitiatePaymentRequest
+    ): ResponseEntity<ApiResponse<Nothing>> {
+        return try {
+            ResponseEntity.ok(transactionService.initiatePayment(merchantTrxId, request))
+        } catch (e: Exception) {
+            ResponseEntity.status(400).body(ApiResponse.error(e.message ?: "Failed to initiate payment"))
+        }
+    }
+
+    @PutMapping("/update/{merchantTrxId}")
+    @PreAuthorize("hasAuthority('TRANSACTION_UPDATE')")
+    fun updateByPath(
         @PathVariable merchantTrxId: String,
         @RequestBody request: TransactionUpdateRequest
     ): ResponseEntity<ApiResponse<TransactionDetailResponse>> {
         return try {
-            ResponseEntity.ok(transactionService.update(merchantTrxId, request))
+            val merged = request.copy(code = request.code ?: merchantTrxId)
+            ResponseEntity.ok(transactionService.update(merged))
         } catch (e: Exception) {
             ResponseEntity.status(400).body(ApiResponse.error(e.message ?: "Failed to update transaction"))
         }

@@ -241,6 +241,36 @@ class ProductService(
             )
         }
 
+        val taxResponse: ProductTaxResponse? = if (tax != null) {
+            val taxAmount = calculateItemTaxAmount(
+                basePrice = basePrice,
+                isTaxable = product.isTaxable,
+                isTaxEnabled = paymentSetting?.isTax == true,
+                isPriceIncludeTax = paymentSetting?.isPriceIncludeTax == true,
+                percentage = tax.percentage
+            )
+            ProductTaxResponse(
+                taxId = tax.id,
+                taxName = tax.name,
+                taxPercentage = tax.percentage,
+                taxAmount = taxAmount
+            )
+        } else if (product.isTaxable && paymentSetting?.isTax == true && paymentSetting.taxPercentage > BigDecimal.ZERO) {
+            val taxAmount = calculateItemTaxAmount(
+                basePrice = basePrice,
+                isTaxable = true,
+                isTaxEnabled = true,
+                isPriceIncludeTax = paymentSetting.isPriceIncludeTax,
+                percentage = paymentSetting.taxPercentage
+            )
+            ProductTaxResponse(
+                taxId = null,
+                taxName = paymentSetting.taxName,
+                taxPercentage = paymentSetting.taxPercentage,
+                taxAmount = taxAmount
+            )
+        } else null
+
         return ProductResponse(
             id = product.id,
             name = product.name,
@@ -255,21 +285,7 @@ class ProductService(
             merchantName = merchant?.merchantName ?: merchant?.name,
             createdDate = product.createdDate,
             isTaxable = product.isTaxable,
-            tax = tax?.let {
-                val taxAmount = calculateItemTaxAmount(
-                    basePrice = basePrice,
-                    isTaxable = product.isTaxable,
-                    isTaxEnabled = paymentSetting?.isTax == true,
-                    isPriceIncludeTax = paymentSetting?.isPriceIncludeTax == true,
-                    percentage = it.percentage
-                )
-                ProductTaxResponse(
-                    taxId = it.id,
-                    taxName = it.name,
-                    taxPercentage = it.percentage,
-                    taxAmount = taxAmount
-                )
-            },
+            tax = taxResponse,
             categories = categories,
             productImages = productImages
         )

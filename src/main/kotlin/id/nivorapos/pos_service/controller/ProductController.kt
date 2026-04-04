@@ -5,6 +5,7 @@ import id.nivorapos.pos_service.dto.request.UpdateProductRequest
 import id.nivorapos.pos_service.dto.response.ApiResponse
 import id.nivorapos.pos_service.dto.response.PagedResponse
 import id.nivorapos.pos_service.dto.response.ProductResponse
+import id.nivorapos.pos_service.security.SecurityUtils
 import id.nivorapos.pos_service.service.ProductService
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.ResponseEntity
@@ -75,6 +76,18 @@ class ProductController(
             ResponseEntity.ok(productService.delete(id))
         } catch (e: Exception) {
             ResponseEntity.status(404).body(ApiResponse.error(e.message ?: "Not found"))
+        }
+    }
+
+    @PostMapping("/recalculate-prices")
+    @PreAuthorize("hasAuthority('PAYMENT_SETTING')")
+    fun recalculatePrices(): ResponseEntity<ApiResponse<Nothing>> {
+        return try {
+            val merchantId = SecurityUtils.getMerchantIdFromContext()
+            productService.recalculateMerchantPrices(merchantId)
+            ResponseEntity.ok(ApiResponse.success("Prices recalculated successfully"))
+        } catch (e: Exception) {
+            ResponseEntity.status(400).body(ApiResponse.error(e.message ?: "Failed to recalculate prices"))
         }
     }
 }

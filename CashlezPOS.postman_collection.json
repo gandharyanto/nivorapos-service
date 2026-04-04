@@ -103,8 +103,14 @@
             },
             "url": {
               "raw": "{{pos_base_url}}/pos/auth/login",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "auth", "login"]
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "auth",
+                "login"
+              ]
             },
             "description": "Login ke POS dan dapatkan token. Token akan otomatis disimpan ke variabel {{pos_token}}."
           },
@@ -129,8 +135,14 @@
             "header": [],
             "url": {
               "raw": "{{pos_base_url}}/pos/product/list?size=10",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "product", "list"],
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "product",
+                "list"
+              ],
               "query": [
                 {
                   "key": "size",
@@ -205,8 +217,15 @@
             "header": [],
             "url": {
               "raw": "{{pos_base_url}}/pos/product/detail/{{product_id}}",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "product", "detail", "{{product_id}}"]
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "product",
+                "detail",
+                "{{product_id}}"
+              ]
             },
             "description": "Ambil detail produk berdasarkan product ID."
           },
@@ -240,8 +259,14 @@
             },
             "url": {
               "raw": "{{pos_base_url}}/pos/product/add",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "product", "add"]
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "product",
+                "add"
+              ]
             },
             "description": "Tambah produk baru. categoryIds bersifat opsional."
           },
@@ -275,8 +300,14 @@
             },
             "url": {
               "raw": "{{pos_base_url}}/pos/product/update",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "product", "update"]
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "product",
+                "update"
+              ]
             },
             "description": "Update data produk. productId wajib diisi di body."
           },
@@ -296,8 +327,15 @@
             "header": [],
             "url": {
               "raw": "{{pos_base_url}}/pos/product/delete/{{product_id}}",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "product", "delete", "{{product_id}}"]
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "product",
+                "delete",
+                "{{product_id}}"
+              ]
             },
             "description": "Hapus produk berdasarkan product ID."
           },
@@ -307,6 +345,42 @@
               "status": "OK",
               "code": 200,
               "body": "{\n  \"status\": \"SUCCESS\",\n  \"message\": \"Product deleted successfully\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Recalculate Prices",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pos_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{pos_base_url}}/pos/product/recalculate-prices",
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "product",
+                "recalculate-prices"
+              ]
+            },
+            "description": "Hitung ulang finalPrice dan taxAmount semua produk merchant berdasarkan basePrice dan payment setting aktif (tax percentage, isPriceIncludeTax). Tidak memerlukan request body."
+          },
+          "response": [
+            {
+              "name": "Recalculate Prices Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"SUCCESS\",\n  \"message\": \"Prices recalculated successfully\",\n  \"data\": null\n}"
             }
           ]
         }
@@ -322,8 +396,14 @@
             "header": [],
             "url": {
               "raw": "{{pos_base_url}}/pos/category/list?size=50",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "category", "list"],
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "category",
+                "list"
+              ],
               "query": [
                 {
                   "key": "size",
@@ -350,8 +430,15 @@
             "header": [],
             "url": {
               "raw": "{{pos_base_url}}/pos/category/detail/{{category_id}}",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "category", "detail", "{{category_id}}"]
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "category",
+                "detail",
+                "{{category_id}}"
+              ]
             },
             "description": "Ambil detail kategori berdasarkan category ID."
           },
@@ -385,8 +472,15 @@
             },
             "url": {
               "raw": "{{pos_base_url}}/pos/category/single/add",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "category", "single", "add"]
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "category",
+                "single",
+                "add"
+              ]
             },
             "description": "Tambah kategori baru."
           },
@@ -420,8 +514,14 @@
             },
             "url": {
               "raw": "{{pos_base_url}}/pos/category/update",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "category", "update"]
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "category",
+                "update"
+              ]
             },
             "description": "Update data kategori. categoryId wajib diisi di body."
           },
@@ -441,8 +541,15 @@
             "header": [],
             "url": {
               "raw": "{{pos_base_url}}/pos/category/delete/{{category_id}}",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "category", "delete", "{{category_id}}"]
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "category",
+                "delete",
+                "{{category_id}}"
+              ]
             },
             "description": "Hapus kategori berdasarkan category ID."
           },
@@ -481,8 +588,14 @@
             },
             "url": {
               "raw": "{{pos_base_url}}/pos/stock/update",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "stock", "update"]
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "stock",
+                "update"
+              ]
             },
             "description": "Update stok produk. updateType: ADD (tambah stok) atau REDUCE (kurangi stok)."
           },
@@ -502,8 +615,15 @@
             "header": [],
             "url": {
               "raw": "{{pos_base_url}}/pos/stock-movement/product/list?productId=1&startDate=2026-01-01&endDate=2026-12-31",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "stock-movement", "product", "list"],
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "stock-movement",
+                "product",
+                "list"
+              ],
               "query": [
                 {
                   "key": "productId",
@@ -545,8 +665,14 @@
             "header": [],
             "url": {
               "raw": "{{pos_base_url}}/pos/transaction/list?page=0&size=10&startDate=2026-01-01&endDate=2026-12-31&sortBy=transactionDate&sortType=DESC",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "transaction", "list"],
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "transaction",
+                "list"
+              ],
               "query": [
                 {
                   "key": "page",
@@ -598,8 +724,15 @@
             "header": [],
             "url": {
               "raw": "{{pos_base_url}}/pos/transaction/detail/{{transaction_id}}",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "transaction", "detail", "{{transaction_id}}"]
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "transaction",
+                "detail",
+                "{{transaction_id}}"
+              ]
             },
             "description": "Ambil detail transaksi berdasarkan transaction ID (Long)."
           },
@@ -633,8 +766,14 @@
             },
             "url": {
               "raw": "{{pos_base_url}}/pos/transaction/create",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "transaction", "create"]
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "transaction",
+                "create"
+              ]
             },
             "description": "Buat transaksi baru. Semua nilai amount dikirim sebagai String. paymentMethod: CASH, QRIS, DEBIT, CREDIT, dll. queueNumber dan notes bersifat opsional."
           },
@@ -668,8 +807,15 @@
             },
             "url": {
               "raw": "{{pos_base_url}}/pos/transaction/update/{{merchant_trx_id}}",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "transaction", "update", "{{merchant_trx_id}}"]
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "transaction",
+                "update",
+                "{{merchant_trx_id}}"
+              ]
             },
             "description": "Update status pembayaran transaksi. merchantTrxId adalah trxId dari response create transaction. paymentTrxId bersifat opsional (nullable)."
           },
@@ -679,6 +825,118 @@
               "status": "OK",
               "code": 200,
               "body": "{\n  \"status\": \"SUCCESS\",\n  \"message\": \"Transaction updated successfully\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Initiate Payment (QRIS Notify)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{pos_token}}",
+                "description": "JWT token dari /pos/auth/login"
+              },
+              {
+                "key": "pos-token",
+                "value": "{{pos_token_encrypted}}",
+                "description": "AES/ECB/PKCS5 encrypted: username|timestamp_epoch (Base64 URL-safe)"
+              },
+              {
+                "key": "pos-key",
+                "value": "{{timestamp_epoch}}",
+                "description": "Unix epoch seconds saat request dibuat"
+              },
+              {
+                "key": "version-id",
+                "value": "{{version_id}}",
+                "description": "BuildConfig.VERSION_CODE aplikasi"
+              },
+              {
+                "key": "device-id",
+                "value": "{{device_id}}",
+                "description": "Serial number perangkat"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentMethod\": \"QRIS\",\n  \"totalAmount\": \"10000.00\",\n  \"paymentTrxId\": \"CZ-TRX-ID-001\",\n  \"additionalInfo\": {\n    \"qrContent\": \"00020101021226600014ID.CO.CASHLEZ.WWW011893600898002087690102150000870269010220303UBE51440014ID.CO.QRIS.WWW0215ID20230607421850303UBE5204542253033605802ID5914MERCHANT NAME6013JAKARTA PUSAT610512345621170113TRX-2026-001630450A4\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{pos_base_url}}/pos/transaction/initiate-payment/{{merchant_trx_id}}",
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "transaction",
+                "initiate-payment",
+                "{{merchant_trx_id}}"
+              ]
+            },
+            "description": "Notify POS server setelah QR code berhasil di-generate.\n\nDipanggil oleh app (GenerateQrViewModel) segera setelah generate QRIS sukses. Memiliki retry logic 3x dengan delay 2s & 4s.\n\nURL path: /pos/transaction/initiate-payment/{merchantTrxId}\n- merchantTrxId: ID transaksi merchant dari data param QRIS (merchant_trx_id)\n\nHeaders khusus:\n- pos-token: AES/ECB/PKCS5Padding encrypted string \"username|timestamp_epoch\", di-encode Base64 URL-safe\n- pos-key: Unix epoch seconds (sama dengan timestamp yang digunakan di pos-token)\n- version-id: BuildConfig.VERSION_CODE\n- device-id: Serial number perangkat"
+          },
+          "response": [
+            {
+              "name": "Initiate Payment Success",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{pos_token}}"
+                  },
+                  {
+                    "key": "pos-token",
+                    "value": "{{pos_token_encrypted}}"
+                  },
+                  {
+                    "key": "pos-key",
+                    "value": "{{timestamp_epoch}}"
+                  },
+                  {
+                    "key": "version-id",
+                    "value": "{{version_id}}"
+                  },
+                  {
+                    "key": "device-id",
+                    "value": "{{device_id}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"paymentMethod\": \"QRIS\",\n  \"totalAmount\": \"10000.00\",\n  \"paymentTrxId\": \"CZ-TRX-ID-001\",\n  \"additionalInfo\": {\n    \"qrContent\": \"00020101...\"\n  }\n}"
+                },
+                "url": {
+                  "raw": "{{pos_base_url}}/pos/transaction/initiate-payment/TRX-001",
+                  "host": [
+                    "{{pos_base_url}}"
+                  ],
+                  "path": [
+                    "pos",
+                    "transaction",
+                    "initiate-payment",
+                    "TRX-001"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"status\": \"SUCCESS\",\n  \"message\": \"Payment initiated successfully\"\n}"
             }
           ]
         }
@@ -694,8 +952,13 @@
             "header": [],
             "url": {
               "raw": "{{pos_base_url}}/pos/payment-setting",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "payment-setting"]
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "payment-setting"
+              ]
             },
             "description": "Ambil konfigurasi payment setting merchant (tax, rounding, service charge)."
           },
@@ -729,8 +992,14 @@
             },
             "url": {
               "raw": "{{pos_base_url}}/pos/payment-setting/create",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "payment-setting", "create"]
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "payment-setting",
+                "create"
+              ]
             },
             "description": "Buat konfigurasi payment setting baru. roundingType: NONE, UP, DOWN. roundingTarget: target nilai pembulatan (misal 100, 500, 1000)."
           },
@@ -764,8 +1033,14 @@
             },
             "url": {
               "raw": "{{pos_base_url}}/pos/payment-setting/update",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "payment-setting", "update"]
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "payment-setting",
+                "update"
+              ]
             },
             "description": "Update konfigurasi payment setting. paymentSettingId wajib diisi di body."
           },
@@ -785,8 +1060,15 @@
             "header": [],
             "url": {
               "raw": "{{pos_base_url}}/pos/payment-method/merchant/list",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "payment-method", "merchant", "list"]
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "payment-method",
+                "merchant",
+                "list"
+              ]
             },
             "description": "Ambil daftar metode pembayaran yang tersedia untuk merchant (internal dan external)."
           },
@@ -811,8 +1093,14 @@
             "header": [],
             "url": {
               "raw": "{{pos_base_url}}/pos/summary-report/list?startDate=2026-01-01&endDate=2026-12-31",
-              "host": ["{{pos_base_url}}"],
-              "path": ["pos", "summary-report", "list"],
+              "host": [
+                "{{pos_base_url}}"
+              ],
+              "path": [
+                "pos",
+                "summary-report",
+                "list"
+              ],
               "query": [
                 {
                   "key": "startDate",
@@ -859,8 +1147,13 @@
             },
             "url": {
               "raw": "{{upload_base_url}}/images/upload",
-              "host": ["{{upload_base_url}}"],
-              "path": ["images", "upload"]
+              "host": [
+                "{{upload_base_url}}"
+              ],
+              "path": [
+                "images",
+                "upload"
+              ]
             },
             "description": "Upload gambar produk/kategori. Response berisi URL full dan URL thumbnail. Timeout: connect 30s, read/write 120s (2 menit)."
           },

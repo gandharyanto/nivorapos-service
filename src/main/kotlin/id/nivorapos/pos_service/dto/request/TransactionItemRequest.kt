@@ -4,5 +4,6 @@ data class TransactionItemRequest(
     val productId: Long,
     val qty: Int,
     val price: String,
-    val taxId: Long? = null
+    val taxId: Long? = null,
+    val taxAmount: String? = null
 )

@@ -7,4 +7,5 @@ import org.springframework.stereotype.Repository
 @Repository
 interface PaymentRepository : JpaRepository<Payment, Long> {
     fun findByTransactionId(transactionId: Long): List<Payment>
+    fun findByPaymentTrxId(paymentTrxId: String): java.util.Optional<Payment>
 }

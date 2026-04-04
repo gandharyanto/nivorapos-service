@@ -1,0 +1,512 @@
+{
+  "status": "SUCCESS",
+  "message": "Product list retrieved",
+  "data": [
+    {
+      "id": 2,
+      "merchantId": 1,
+      "name": "Americano",
+      "price": 28000,
+      "sku": "BVR-002",
+      "upc": "8991234000002",
+      "imageUrl": null,
+      "imageThumbUrl": null,
+      "description": "Espresso dengan air panas, rasa bold",
+      "stockMode": "TRACK",
+      "basePrice": 24000,
+      "isTaxable": true,
+      "taxId": 1,
+      "tax": {
+        "id": 1,
+        "name": "PPN 11%",
+        "percentage": 11,
+        "isActive": true,
+        "isDefault": true
+      },
+      "qty": 100,
+      "categories": [
+        {
+          "id": 1,
+          "merchantId": 1,
+          "name": "Minuman Panas",
+          "image": null,
+          "description": "Kategori kopi, teh, dan minuman panas lainnya",
+          "createdBy": "SEEDER",
+          "createdDate": "2026-04-03T14:11:20.528529",
+          "modifiedBy": null,
+          "modifiedDate": null
+        }
+      ],
+      "images": [
+        {
+          "id": 2,
+          "filename": "product_002.jpg",
+          "ext": "jpg",
+          "isMain": true
+        }
+      ],
+      "createdBy": "SEEDER",
+      "createdDate": "2026-04-03T14:11:20.528529",
+      "modifiedBy": null,
+      "modifiedDate": null
+    },
+    {
+      "id": 3,
+      "merchantId": 1,
+      "name": "Cappuccino",
+      "price": 35000,
+      "sku": "BVR-003",
+      "upc": "8991234000003",
+      "imageUrl": null,
+      "imageThumbUrl": null,
+      "description": "Espresso dengan foam susu lembut",
+      "stockMode": "TRACK",
+      "basePrice": 30000,
+      "isTaxable": true,
+      "taxId": 1,
+      "tax": {
+        "id": 1,
+        "name": "PPN 11%",
+        "percentage": 11,
+        "isActive": true,
+        "isDefault": true
+      },
+      "qty": 100,
+      "categories": [
+        {
+          "id": 1,
+          "merchantId": 1,
+          "name": "Minuman Panas",
+          "image": null,
+          "description": "Kategori kopi, teh, dan minuman panas lainnya",
+          "createdBy": "SEEDER",
+          "createdDate": "2026-04-03T14:11:20.528529",
+          "modifiedBy": null,
+          "modifiedDate": null
+        }
+      ],
+      "images": [
+        {
+          "id": 3,
+          "filename": "product_003.jpg",
+          "ext": "jpg",
+          "isMain": true
+        }
+      ],
+      "createdBy": "SEEDER",
+      "createdDate": "2026-04-03T14:11:20.528529",
+      "modifiedBy": null,
+      "modifiedDate": null
+    },
+    {
+      "id": 9,
+      "merchantId": 1,
+      "name": "Croissant Butter",
+      "price": 28000,
+      "sku": "CML-002",
+      "upc": "8991234000009",
+      "imageUrl": null,
+      "imageThumbUrl": null,
+      "description": "Croissant renyah dengan mentega premium",
+      "stockMode": "TRACK",
+      "basePrice": 8000,
+      "isTaxable": true,
+      "taxId": 1,
+      "tax": {
+        "id": 1,
+        "name": "PPN 11%",
+        "percentage": 11,
+        "isActive": true,
+        "isDefault": true
+      },
+      "qty": 98,
+      "categories": [
+        {
+          "id": 4,
+          "merchantId": 1,
+          "name": "Camilan",
+          "image": null,
+          "description": "Snack, kue, dan kudapan ringan",
+          "createdBy": "SEEDER",
+          "createdDate": "2026-04-03T14:11:20.528529",
+          "modifiedBy": null,
+          "modifiedDate": null
+        }
+      ],
+      "images": [
+        {
+          "id": 9,
+          "filename": "product_009.jpg",
+          "ext": "jpg",
+          "isMain": true
+        }
+      ],
+      "createdBy": "SEEDER",
+      "createdDate": "2026-04-03T14:11:20.528529",
+      "modifiedBy": null,
+      "modifiedDate": null
+    },
+    {
+      "id": 4,
+      "merchantId": 1,
+      "name": "Es Kopi Susu",
+      "price": 30000,
+      "sku": "BVR-004",
+      "upc": "8991234000004",
+      "imageUrl": null,
+      "imageThumbUrl": null,
+      "description": "Kopi susu segar disajikan dingin",
+      "stockMode": "TRACK",
+      "basePrice": 26000,
+      "isTaxable": true,
+      "taxId": 1,
+      "tax": {
+        "id": 1,
+        "name": "PPN 11%",
+        "percentage": 11,
+        "isActive": true,
+        "isDefault": true
+      },
+      "qty": 100,
+      "categories": [
+        {
+          "id": 2,
+          "merchantId": 1,
+          "name": "Minuman Dingin",
+          "image": null,
+          "description": "Kategori es kopi, smoothie, dan minuman dingin",
+          "createdBy": "SEEDER",
+          "createdDate": "2026-04-03T14:11:20.528529",
+          "modifiedBy": null,
+          "modifiedDate": null
+        }
+      ],
+      "images": [
+        {
+          "id": 4,
+          "filename": "product_004.jpg",
+          "ext": "jpg",
+          "isMain": true
+        }
+      ],
+      "createdBy": "SEEDER",
+      "createdDate": "2026-04-03T14:11:20.528529",
+      "modifiedBy": null,
+      "modifiedDate": null
+    },
+    {
+      "id": 1,
+      "merchantId": 1,
+      "name": "Kopi Susu Signature",
+      "price": 32000,
+      "sku": "BVR-001",
+      "upc": "8991234000001",
+      "imageUrl": null,
+      "imageThumbUrl": null,
+      "description": "Kopi susu dengan susu segar pilihan",
+      "stockMode": "TRACK",
+      "basePrice": 28000,
+      "isTaxable": true,
+      "taxId": 1,
+      "tax": {
+        "id": 1,
+        "name": "PPN 11%",
+        "percentage": 11,
+        "isActive": true,
+        "isDefault": true
+      },
+      "qty": 100,
+      "categories": [
+        {
+          "id": 1,
+          "merchantId": 1,
+          "name": "Minuman Panas",
+          "image": null,
+          "description": "Kategori kopi, teh, dan minuman panas lainnya",
+          "createdBy": "SEEDER",
+          "createdDate": "2026-04-03T14:11:20.528529",
+          "modifiedBy": null,
+          "modifiedDate": null
+        }
+      ],
+      "images": [
+        {
+          "id": 1,
+          "filename": "product_001.jpg",
+          "ext": "jpg",
+          "isMain": true
+        }
+      ],
+      "createdBy": "SEEDER",
+      "createdDate": "2026-04-03T14:11:20.528529",
+      "modifiedBy": null,
+      "modifiedDate": null
+    },
+    {
+      "id": 5,
+      "merchantId": 1,
+      "name": "Matcha Latte",
+      "price": 38000,
+      "sku": "BVR-005",
+      "upc": "8991234000005",
+      "imageUrl": null,
+      "imageThumbUrl": null,
+      "description": "Matcha premium dengan susu segar",
+      "stockMode": "TRACK",
+      "basePrice": 32000,
+      "isTaxable": true,
+      "taxId": 1,
+      "tax": {
+        "id": 1,
+        "name": "PPN 11%",
+        "percentage": 11,
+        "isActive": true,
+        "isDefault": true
+      },
+      "qty": 100,
+      "categories": [
+        {
+          "id": 2,
+          "merchantId": 1,
+          "name": "Minuman Dingin",
+          "image": null,
+          "description": "Kategori es kopi, smoothie, dan minuman dingin",
+          "createdBy": "SEEDER",
+          "createdDate": "2026-04-03T14:11:20.528529",
+          "modifiedBy": null,
+          "modifiedDate": null
+        }
+      ],
+      "images": [
+        {
+          "id": 5,
+          "filename": "product_005.jpg",
+          "ext": "jpg",
+          "isMain": true
+        }
+      ],
+      "createdBy": "SEEDER",
+      "createdDate": "2026-04-03T14:11:20.528529",
+      "modifiedBy": null,
+      "modifiedDate": null
+    },
+    {
+      "id": 7,
+      "merchantId": 1,
+      "name": "Mie Goreng Ayam",
+      "price": 42000,
+      "sku": "MKN-002",
+      "upc": "8991234000007",
+      "imageUrl": null,
+      "imageThumbUrl": null,
+      "description": "Mie goreng dengan topping ayam crispy",
+      "stockMode": "TRACK",
+      "basePrice": 35000,
+      "isTaxable": true,
+      "taxId": 1,
+      "tax": {
+        "id": 1,
+        "name": "PPN 11%",
+        "percentage": 11,
+        "isActive": true,
+        "isDefault": true
+      },
+      "qty": 100,
+      "categories": [
+        {
+          "id": 3,
+          "merchantId": 1,
+          "name": "Makanan Berat",
+          "image": null,
+          "description": "Nasi, mie, pasta, dan makanan utama",
+          "createdBy": "SEEDER",
+          "createdDate": "2026-04-03T14:11:20.528529",
+          "modifiedBy": null,
+          "modifiedDate": null
+        }
+      ],
+      "images": [
+        {
+          "id": 7,
+          "filename": "product_007.jpg",
+          "ext": "jpg",
+          "isMain": true
+        }
+      ],
+      "createdBy": "SEEDER",
+      "createdDate": "2026-04-03T14:11:20.528529",
+      "modifiedBy": null,
+      "modifiedDate": null
+    },
+    {
+      "id": 6,
+      "merchantId": 1,
+      "name": "Nasi Goreng Spesial",
+      "price": 45000,
+      "sku": "MKN-001",
+      "upc": "8991234000006",
+      "imageUrl": null,
+      "imageThumbUrl": null,
+      "description": "Nasi goreng dengan telur, ayam, dan sosis",
+      "stockMode": "TRACK",
+      "basePrice": 38000,
+      "isTaxable": true,
+      "taxId": 1,
+      "tax": {
+        "id": 1,
+        "name": "PPN 11%",
+        "percentage": 11,
+        "isActive": true,
+        "isDefault": true
+      },
+      "qty": 100,
+      "categories": [
+        {
+          "id": 3,
+          "merchantId": 1,
+          "name": "Makanan Berat",
+          "image": null,
+          "description": "Nasi, mie, pasta, dan makanan utama",
+          "createdBy": "SEEDER",
+          "createdDate": "2026-04-03T14:11:20.528529",
+          "modifiedBy": null,
+          "modifiedDate": null
+        }
+      ],
+      "images": [
+        {
+          "id": 6,
+          "filename": "product_006.jpg",
+          "ext": "jpg",
+          "isMain": true
+        }
+      ],
+      "createdBy": "SEEDER",
+      "createdDate": "2026-04-03T14:11:20.528529",
+      "modifiedBy": null,
+      "modifiedDate": null
+    },
+    {
+      "id": 10,
+      "merchantId": 1,
+      "name": "Paket Kopi + Roti",
+      "price": 52000,
+      "sku": "PKT-001",
+      "upc": "8991234000010",
+      "imageUrl": null,
+      "imageThumbUrl": null,
+      "description": "Paket hemat: kopi susu + roti bakar",
+      "stockMode": "NONE",
+      "basePrice": 49000,
+      "isTaxable": true,
+      "taxId": 1,
+      "tax": {
+        "id": 1,
+        "name": "PPN 11%",
+        "percentage": 11,
+        "isActive": true,
+        "isDefault": true
+      },
+      "qty": 99,
+      "categories": [
+        {
+          "id": 1,
+          "merchantId": 1,
+          "name": "Minuman Panas",
+          "image": null,
+          "description": "Kategori kopi, teh, dan minuman panas lainnya",
+          "createdBy": "SEEDER",
+          "createdDate": "2026-04-03T14:11:20.528529",
+          "modifiedBy": null,
+          "modifiedDate": null
+        },
+        {
+          "id": 4,
+          "merchantId": 1,
+          "name": "Camilan",
+          "image": null,
+          "description": "Snack, kue, dan kudapan ringan",
+          "createdBy": "SEEDER",
+          "createdDate": "2026-04-03T14:11:20.528529",
+          "modifiedBy": null,
+          "modifiedDate": null
+        },
+        {
+          "id": 5,
+          "merchantId": 1,
+          "name": "Paket Promo",
+          "image": null,
+          "description": "Bundel hemat dan menu promo",
+          "createdBy": "SEEDER",
+          "createdDate": "2026-04-03T14:11:20.528529",
+          "modifiedBy": null,
+          "modifiedDate": null
+        }
+      ],
+      "images": [
+        {
+          "id": 10,
+          "filename": "product_010.jpg",
+          "ext": "jpg",
+          "isMain": true
+        }
+      ],
+      "createdBy": "SEEDER",
+      "createdDate": "2026-04-03T14:11:20.528529",
+      "modifiedBy": null,
+      "modifiedDate": null
+    },
+    {
+      "id": 8,
+      "merchantId": 1,
+      "name": "Roti Bakar Coklat",
+      "price": 25000,
+      "sku": "CML-001",
+      "upc": "8991234000008",
+      "imageUrl": null,
+      "imageThumbUrl": null,
+      "description": "Roti bakar dengan selai coklat keju",
+      "stockMode": "TRACK",
+      "basePrice": 55000,
+      "isTaxable": true,
+      "taxId": 1,
+      "tax": {
+        "id": 1,
+        "name": "PPN 11%",
+        "percentage": 11,
+        "isActive": true,
+        "isDefault": true
+      },
+      "qty": 99,
+      "categories": [
+        {
+          "id": 4,
+          "merchantId": 1,
+          "name": "Camilan",
+          "image": null,
+          "description": "Snack, kue, dan kudapan ringan",
+          "createdBy": "SEEDER",
+          "createdDate": "2026-04-03T14:11:20.528529",
+          "modifiedBy": null,
+          "modifiedDate": null
+        }
+      ],
+      "images": [
+        {
+          "id": 8,
+          "filename": "product_008.jpg",
+          "ext": "jpg",
+          "isMain": true
+        }
+      ],
+      "createdBy": "SEEDER",
+      "createdDate": "2026-04-03T14:11:20.528529",
+      "modifiedBy": null,
+      "modifiedDate": null
+    }
+  ],
+  "page": 0,
+  "size": 100000,
+  "totalElements": 10,
+  "totalPages": 1
+}
