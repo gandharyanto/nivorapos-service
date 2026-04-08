@@ -1,14 +1,12 @@
 package id.nivorapos.pos_service.entity
 
 import jakarta.persistence.*
+import java.math.BigDecimal
 import java.time.LocalDateTime
 
 @Entity
-@Table(
-    name = "stock",
-    uniqueConstraints = [UniqueConstraint(columnNames = ["product_id", "variant_id"])]
-)
-class Stock(
+@Table(name = "product_modifier")
+class ProductModifier(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
@@ -16,11 +14,17 @@ class Stock(
     @Column(name = "product_id")
     var productId: Long = 0,
 
-    @Column(name = "variant_id")
-    var variantId: Long? = null,
+    @Column(name = "modifier_group_id")
+    var modifierGroupId: Long = 0,
 
-    @Column(name = "qty")
-    var qty: Int = 0,
+    @Column(name = "name")
+    var name: String = "",
+
+    @Column(name = "additional_price", precision = 19, scale = 2)
+    var additionalPrice: BigDecimal = BigDecimal.ZERO,
+
+    @Column(name = "is_active")
+    var isActive: Boolean = true,
 
     @Column(name = "created_by")
     var createdBy: String? = null,

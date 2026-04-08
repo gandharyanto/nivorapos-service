@@ -5,6 +5,7 @@ import java.math.BigDecimal
 data class ProductRequest(
     val name: String,
     val price: BigDecimal,
+    val productType: String = "SIMPLE",
     val sku: String? = null,
     val upc: String? = null,
     val imageUrl: String? = null,

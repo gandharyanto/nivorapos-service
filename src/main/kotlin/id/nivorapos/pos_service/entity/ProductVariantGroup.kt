@@ -4,11 +4,8 @@ import jakarta.persistence.*
 import java.time.LocalDateTime
 
 @Entity
-@Table(
-    name = "stock",
-    uniqueConstraints = [UniqueConstraint(columnNames = ["product_id", "variant_id"])]
-)
-class Stock(
+@Table(name = "product_variant_group")
+class ProductVariantGroup(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
@@ -16,11 +13,17 @@ class Stock(
     @Column(name = "product_id")
     var productId: Long = 0,
 
-    @Column(name = "variant_id")
-    var variantId: Long? = null,
+    @Column(name = "name")
+    var name: String = "",
 
-    @Column(name = "qty")
-    var qty: Int = 0,
+    @Column(name = "is_required")
+    var isRequired: Boolean = true,
+
+    @Column(name = "display_order")
+    var displayOrder: Int = 0,
+
+    @Column(name = "is_active")
+    var isActive: Boolean = true,
 
     @Column(name = "created_by")
     var createdBy: String? = null,

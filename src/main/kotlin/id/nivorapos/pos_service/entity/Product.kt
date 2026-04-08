@@ -53,6 +53,12 @@ class Product(
     @Column(name = "tax_id")
     var taxId: Long? = null,
 
+    @Column(name = "product_type")
+    var productType: String = "SIMPLE",
+
+    @Column(name = "is_active")
+    var isActive: Boolean = true,
+
     @Column(name = "deleted_by")
     var deletedBy: String? = null,
 
