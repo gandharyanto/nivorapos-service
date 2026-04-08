@@ -29,6 +29,9 @@ class ProductModifier(
     @Column(name = "is_stock")
     var isStock: Boolean = false,
 
+    @Column(name = "is_default")
+    var isDefault: Boolean = false,
+
     @Column(name = "created_by")
     var createdBy: String? = null,
 

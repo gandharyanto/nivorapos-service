@@ -299,6 +299,8 @@ class ProductService(
         val username = SecurityUtils.getUsernameFromContext()
         val now = LocalDateTime.now()
 
+        if (request.isDefault) clearVariantGroupDefault(request.variantGroupId)
+
         val variant = ProductVariant(
             productId = productId,
             variantGroupId = request.variantGroupId,
@@ -306,6 +308,7 @@ class ProductService(
             additionalPrice = request.additionalPrice,
             sku = request.sku,
             isStock = request.isStock,
+            isDefault = request.isDefault,
             createdBy = username,
             createdDate = now,
             modifiedBy = username,
@@ -342,10 +345,13 @@ class ProductService(
             }
         }
 
+        if (request.isDefault && !variant.isDefault) clearVariantGroupDefault(variant.variantGroupId)
+
         variant.name = request.name
         variant.additionalPrice = request.additionalPrice
         variant.sku = request.sku
         variant.isStock = request.isStock
+        variant.isDefault = request.isDefault
         variant.modifiedBy = SecurityUtils.getUsernameFromContext()
         variant.modifiedDate = LocalDateTime.now()
 
@@ -444,12 +450,15 @@ class ProductService(
         val username = SecurityUtils.getUsernameFromContext()
         val now = LocalDateTime.now()
 
+        if (request.isDefault) clearModifierGroupDefault(request.modifierGroupId)
+
         val modifier = ProductModifier(
             productId = productId,
             modifierGroupId = request.modifierGroupId,
             name = request.name,
             additionalPrice = request.additionalPrice,
             isStock = request.isStock,
+            isDefault = request.isDefault,
             createdBy = username,
             createdDate = now,
             modifiedBy = username,
@@ -465,9 +474,12 @@ class ProductService(
         val modifier = productModifierRepository.findByProductIdAndId(productId, modifierId)
             ?: throw RuntimeException("Modifier not found")
 
+        if (request.isDefault && !modifier.isDefault) clearModifierGroupDefault(modifier.modifierGroupId)
+
         modifier.name = request.name
         modifier.additionalPrice = request.additionalPrice
         modifier.isStock = request.isStock
+        modifier.isDefault = request.isDefault
         modifier.modifiedBy = SecurityUtils.getUsernameFromContext()
         modifier.modifiedDate = LocalDateTime.now()
 
@@ -602,6 +614,7 @@ class ProductService(
             additionalPrice = variant.additionalPrice,
             sku = variant.sku,
             isStock = variant.isStock,
+            isDefault = variant.isDefault,
             qty = qty,
             isActive = variant.isActive
         )
@@ -628,8 +641,21 @@ class ProductService(
             name = modifier.name,
             additionalPrice = modifier.additionalPrice,
             isStock = modifier.isStock,
+            isDefault = modifier.isDefault,
             isActive = modifier.isActive
         )
+    }
+
+    private fun clearVariantGroupDefault(variantGroupId: Long) {
+        val existing = productVariantRepository.findByVariantGroupIdAndIsDefaultTrue(variantGroupId)
+        existing.forEach { it.isDefault = false }
+        if (existing.isNotEmpty()) productVariantRepository.saveAll(existing)
+    }
+
+    private fun clearModifierGroupDefault(modifierGroupId: Long) {
+        val existing = productModifierRepository.findByModifierGroupIdAndIsDefaultTrue(modifierGroupId)
+        existing.forEach { it.isDefault = false }
+        if (existing.isNotEmpty()) productModifierRepository.saveAll(existing)
     }
 
     private fun calculateItemTaxAmount(

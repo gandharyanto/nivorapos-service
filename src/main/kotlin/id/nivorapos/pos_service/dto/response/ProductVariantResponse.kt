@@ -8,6 +8,7 @@ data class ProductVariantResponse(
     val additionalPrice: BigDecimal,
     val sku: String?,
     val isStock: Boolean,
+    val isDefault: Boolean,
     val qty: Int,
     val isActive: Boolean
 )
