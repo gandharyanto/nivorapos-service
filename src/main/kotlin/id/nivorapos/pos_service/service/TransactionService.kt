@@ -7,6 +7,7 @@ import id.nivorapos.pos_service.dto.request.TransactionUpdateRequest
 import id.nivorapos.pos_service.dto.response.*
 import id.nivorapos.pos_service.entity.*
 import id.nivorapos.pos_service.repository.*
+import id.nivorapos.pos_service.dto.response.TransactionItemModifierResponse
 import id.nivorapos.pos_service.security.SecurityUtils
 import jakarta.persistence.EntityManager
 import org.springframework.data.domain.PageRequest
@@ -25,6 +26,7 @@ import java.util.Random
 class TransactionService(
     private val transactionRepository: TransactionRepository,
     private val transactionItemRepository: TransactionItemRepository,
+    private val transactionItemModifierRepository: TransactionItemModifierRepository,
     private val transactionQueueRepository: TransactionQueueRepository,
     private val paymentRepository: PaymentRepository,
     private val productRepository: ProductRepository,
@@ -32,6 +34,10 @@ class TransactionService(
     private val stockMovementRepository: StockMovementRepository,
     private val taxRepository: TaxRepository,
     private val paymentSettingRepository: PaymentSettingRepository,
+    private val productVariantRepository: ProductVariantRepository,
+    private val productVariantGroupRepository: ProductVariantGroupRepository,
+    private val productModifierRepository: ProductModifierRepository,
+    private val productModifierGroupRepository: ProductModifierGroupRepository,
     private val objectMapper: ObjectMapper,
     private val entityManager: EntityManager
 ) {
@@ -141,6 +147,17 @@ class TransactionService(
             val totalPrice = itemPrice.multiply(BigDecimal(itemReq.qty))
             val snapshot = if (product != null) objectMapper.writeValueAsString(product) else null
 
+            // Resolve variant
+            val variant = itemReq.variantId?.let { productVariantRepository.findById(it).orElse(null) }
+            validateVariantSelection(itemReq.productId, itemReq.variantId)
+
+            // Resolve modifiers
+            val selectedModifiers = itemReq.modifierIds.mapNotNull { productModifierRepository.findById(it).orElse(null) }
+            validateModifierSelection(itemReq.productId, selectedModifiers.map { it.id })
+
+            val variantAdditionalPrice = variant?.additionalPrice ?: BigDecimal.ZERO
+            val modifiersAdditionalPrice = selectedModifiers.fold(BigDecimal.ZERO) { acc, m -> acc.add(m.additionalPrice) }
+
             val item = TransactionItem(
                 transactionId = savedTrx.id,
                 productId = itemReq.productId,
@@ -148,6 +165,10 @@ class TransactionService(
                 price = itemPrice,
                 qty = itemReq.qty,
                 totalPrice = totalPrice,
+                variantId = variant?.id,
+                variantName = variant?.name,
+                variantAdditionalPrice = variantAdditionalPrice,
+                modifiersAdditionalPrice = modifiersAdditionalPrice,
                 productSnapshot = snapshot,
                 taxId = itemReq.taxId,
                 taxName = tax?.name,
@@ -158,7 +179,24 @@ class TransactionService(
                 modifiedBy = username,
                 modifiedDate = now
             )
-            transactionItemRepository.save(item)
+            val savedItem = transactionItemRepository.save(item)
+
+            // Save modifier selections
+            selectedModifiers.forEach { modifier ->
+                val group = productModifierGroupRepository.findById(modifier.modifierGroupId).orElse(null)
+                transactionItemModifierRepository.save(
+                    TransactionItemModifier(
+                        transactionItemId = savedItem.id,
+                        modifierGroupId = modifier.modifierGroupId,
+                        modifierGroupName = group?.name ?: "",
+                        modifierId = modifier.id,
+                        modifierName = modifier.name,
+                        additionalPrice = modifier.additionalPrice,
+                        createdBy = username,
+                        createdDate = now
+                    )
+                )
+            }
 
             // Reduce stock
             stockRepository.findByProductId(itemReq.productId).ifPresent { stock ->
@@ -285,14 +323,27 @@ class TransactionService(
             transactionQueueRepository.findById(it).orElse(null)?.queueNumber
         }
         val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-        val items = transactionItemRepository.findByTransactionId(transaction.id).map {
+        val items = transactionItemRepository.findByTransactionId(transaction.id).map { item ->
+            val modifiers = transactionItemModifierRepository.findByTransactionItemId(item.id).map {
+                TransactionItemModifierResponse(
+                    modifierId = it.modifierId,
+                    modifierGroupId = it.modifierGroupId,
+                    modifierGroupName = it.modifierGroupName,
+                    modifierName = it.modifierName,
+                    additionalPrice = it.additionalPrice
+                )
+            }
             TransactionItemResponse(
-                productId = it.productId,
-                productName = it.productName,
-                price = it.price,
-                qty = it.qty,
-                totalPrice = it.totalPrice,
-                taxAmount = it.taxAmount
+                productId = item.productId,
+                productName = item.productName,
+                price = item.price,
+                qty = item.qty,
+                totalPrice = item.totalPrice,
+                taxAmount = item.taxAmount,
+                variantId = item.variantId,
+                variantName = item.variantName,
+                variantAdditionalPrice = item.variantAdditionalPrice,
+                modifiers = modifiers
             )
         }
         val payments = paymentRepository.findByTransactionId(transaction.id).map {
@@ -496,6 +547,63 @@ class TransactionService(
             }
         }
         return roundedAmount.subtract(amount).setScale(2, RoundingMode.HALF_UP)
+    }
+
+    /**
+     * Variant: per variant group, exactly 1 variant must be selected (if group is required).
+     */
+    private fun validateVariantSelection(productId: Long, selectedVariantId: Long?) {
+        val groups = productVariantGroupRepository.findByProductId(productId).filter { it.isActive }
+        for (group in groups) {
+            val variantsInGroup = productVariantRepository.findByVariantGroupId(group.id).filter { it.isActive }
+            if (variantsInGroup.isEmpty()) continue
+            if (group.isRequired && selectedVariantId == null) {
+                throw IllegalArgumentException("Variant group '${group.name}' is required for product $productId")
+            }
+            if (selectedVariantId != null) {
+                val belongsToGroup = variantsInGroup.any { it.id == selectedVariantId }
+                // Only validate when this group has variants that include the selected one
+                if (belongsToGroup) return // valid: exactly 1 from this group
+            }
+        }
+        // If a variantId was provided, ensure it actually belongs to the product
+        if (selectedVariantId != null) {
+            val variant = productVariantRepository.findByProductIdAndId(productId, selectedVariantId)
+                ?: throw IllegalArgumentException("Variant $selectedVariantId does not belong to product $productId")
+            if (!variant.isActive) {
+                throw IllegalArgumentException("Variant $selectedVariantId is not active")
+            }
+        }
+    }
+
+    /**
+     * Modifier: per modifier group, number of selections must satisfy minSelect/maxSelect.
+     */
+    private fun validateModifierSelection(productId: Long, selectedModifierIds: List<Long>) {
+        val groups = productModifierGroupRepository.findByProductId(productId).filter { it.isActive }
+        for (group in groups) {
+            val modifiersInGroup = productModifierRepository.findByModifierGroupId(group.id).filter { it.isActive }
+            if (modifiersInGroup.isEmpty()) continue
+            val selectedInGroup = selectedModifierIds.count { id -> modifiersInGroup.any { it.id == id } }
+            if (selectedInGroup < group.minSelect) {
+                throw IllegalArgumentException(
+                    "Modifier group '${group.name}' requires at least ${group.minSelect} selection(s), got $selectedInGroup"
+                )
+            }
+            if (group.maxSelect > 0 && selectedInGroup > group.maxSelect) {
+                throw IllegalArgumentException(
+                    "Modifier group '${group.name}' allows at most ${group.maxSelect} selection(s), got $selectedInGroup"
+                )
+            }
+        }
+        // Validate all provided modifier IDs belong to the product
+        selectedModifierIds.forEach { modId ->
+            val modifier = productModifierRepository.findByProductIdAndId(productId, modId)
+                ?: throw IllegalArgumentException("Modifier $modId does not belong to product $productId")
+            if (!modifier.isActive) {
+                throw IllegalArgumentException("Modifier $modId is not active")
+            }
+        }
     }
 
     private fun parseBD(value: String?): BigDecimal {
