@@ -43,5 +43,5 @@ data class ProductResponse(
     val categories: List<ProductCategoryResponse>,
     val productImages: List<ProductImageResponse>,
     val variantGroups: List<ProductVariantGroupResponse>,
-    val modifierGroups: List<ProductModifierGroupResponse>
+    val modifiers: List<ProductModifierResponse>
 )

@@ -1,6 +1,7 @@
 package id.nivorapos.pos_service.service
 
 import tools.jackson.databind.ObjectMapper
+import id.nivorapos.pos_service.dto.request.DiscountValidateItemRequest
 import id.nivorapos.pos_service.dto.request.InitiatePaymentRequest
 import id.nivorapos.pos_service.dto.request.TransactionRequest
 import id.nivorapos.pos_service.dto.request.TransactionUpdateRequest
@@ -37,7 +38,9 @@ class TransactionService(
     private val productVariantRepository: ProductVariantRepository,
     private val productVariantGroupRepository: ProductVariantGroupRepository,
     private val productModifierRepository: ProductModifierRepository,
-    private val productModifierGroupRepository: ProductModifierGroupRepository,
+    private val discountService: DiscountService,
+    private val promotionService: PromotionService,
+    private val productCategoryRepository: ProductCategoryRepository,
     private val objectMapper: ObjectMapper,
     private val entityManager: EntityManager
 ) {
@@ -81,8 +84,43 @@ class TransactionService(
         val username = SecurityUtils.getUsernameFromContext()
         val now = LocalDateTime.now()
 
-        // Validate and compute amounts server-side
-        val (validationError, computed) = computeAndValidate(request, merchantId)
+        // Build discountItems early — needed for discount/promo resolution and SC basis
+        val discountItems = request.items.map { itemReq ->
+            val catIds = productCategoryRepository.findByProductId(itemReq.productId).map { it.categoryId }
+            DiscountValidateItemRequest(
+                productId = itemReq.productId,
+                qty = itemReq.qty,
+                price = parseBD(itemReq.price),
+                categoryIds = catIds
+            )
+        }
+
+        // Pre-compute subTotal for discount/promo resolution
+        val prelimSubTotal = discountItems.fold(BigDecimal.ZERO) { acc, item ->
+            acc.add(item.price.multiply(BigDecimal(item.qty)))
+        }
+
+        // Resolve discount (validate + hitung amount, belum catat usage)
+        val (discountAmount, appliedDiscount) = discountService.resolveForTransaction(
+            discountId = request.discountId,
+            discountCode = request.discountCode,
+            merchantId = merchantId,
+            transactionTotal = prelimSubTotal,
+            outletId = request.outletId,
+            customerId = request.customerId,
+            items = discountItems
+        )
+
+        // Auto-apply promotions
+        val (promoAmount, _) = promotionService.autoApply(
+            merchantId = merchantId,
+            transactionTotal = prelimSubTotal,
+            outletId = request.outletId,
+            items = discountItems
+        )
+
+        // Validate and compute amounts server-side (discount/promo needed for AFTER_DISCOUNT SC basis)
+        val (validationError, computed) = computeAndValidate(request, merchantId, discountAmount, promoAmount)
         validationError?.let { throw IllegalArgumentException(it) }
         val amounts = computed!!
 
@@ -131,6 +169,11 @@ class TransactionService(
             roundingTarget = request.roundingTarget,
             cashTendered = parseBD(request.cashTendered),
             cashChange = parseBD(request.cashChange),
+            discountId = appliedDiscount?.id,
+            discountCode = appliedDiscount?.code,
+            discountName = appliedDiscount?.name,
+            discountAmount = discountAmount,
+            promoAmount = promoAmount,
             queueId = queueId,
             createdBy = username,
             createdDate = now,
@@ -138,6 +181,11 @@ class TransactionService(
             modifiedDate = now
         )
         val savedTrx = transactionRepository.save(transaction)
+
+        // Catat discount usage setelah transaksi tersimpan
+        if (appliedDiscount != null) {
+            discountService.recordUsage(appliedDiscount, savedTrx.id, request.customerId)
+        }
 
         // Save items
         request.items.forEach { itemReq ->
@@ -183,12 +231,9 @@ class TransactionService(
 
             // Save modifier selections
             selectedModifiers.forEach { modifier ->
-                val group = productModifierGroupRepository.findById(modifier.modifierGroupId).orElse(null)
                 transactionItemModifierRepository.save(
                     TransactionItemModifier(
                         transactionItemId = savedItem.id,
-                        modifierGroupId = modifier.modifierGroupId,
-                        modifierGroupName = group?.name ?: "",
                         modifierId = modifier.id,
                         modifierName = modifier.name,
                         additionalPrice = modifier.additionalPrice,
@@ -327,8 +372,6 @@ class TransactionService(
             val modifiers = transactionItemModifierRepository.findByTransactionItemId(item.id).map {
                 TransactionItemModifierResponse(
                     modifierId = it.modifierId,
-                    modifierGroupId = it.modifierGroupId,
-                    modifierGroupName = it.modifierGroupName,
                     modifierName = it.modifierName,
                     additionalPrice = it.additionalPrice
                 )
@@ -380,6 +423,11 @@ class TransactionService(
             roundingTarget = transaction.roundingTarget,
             cashTendered = transaction.cashTendered,
             cashChange = transaction.cashChange,
+            discountId = transaction.discountId,
+            discountCode = transaction.discountCode,
+            discountName = transaction.discountName,
+            discountAmount = transaction.discountAmount,
+            promoAmount = transaction.promoAmount,
             transactionDate = transaction.createdDate?.format(dateFormatter),
             queueNumber = queueNumber,
             transactionItems = items,
@@ -411,7 +459,12 @@ class TransactionService(
         val totalAmount: BigDecimal
     )
 
-    private fun computeAndValidate(request: TransactionRequest, merchantId: Long): Pair<String?, ComputedAmounts?> {
+    private fun computeAndValidate(
+        request: TransactionRequest,
+        merchantId: Long,
+        discountAmount: BigDecimal = BigDecimal.ZERO,
+        promoAmount: BigDecimal = BigDecimal.ZERO
+    ): Pair<String?, ComputedAmounts?> {
         val tolerance = BigDecimal("1.00")
         val paymentSetting = paymentSettingRepository.findByMerchantId(merchantId).orElse(null)
         val isPriceIncludeTax = paymentSetting?.isPriceIncludeTax == true
@@ -470,32 +523,47 @@ class TransactionService(
             return Pair("totalTax mismatch: expected $calculatedTotalTax, got $clientTotalTax", null)
         }
 
-        // Compute service charge from DB — prefer percentage, fall back to fixed amount
+        // Compute service charge from DB, using the configured source/basis
+        val netAfterDiscount = (calculatedSubTotal - discountAmount - promoAmount).max(BigDecimal.ZERO)
         val expectedServiceCharge = if (paymentSetting?.isServiceCharge == true) {
             when {
-                paymentSetting.serviceChargePercentage > BigDecimal.ZERO ->
-                    calculatedSubTotal.multiply(paymentSetting.serviceChargePercentage)
-                        .divide(hundred, 2, RoundingMode.HALF_UP)
                 paymentSetting.serviceChargeAmount > BigDecimal.ZERO ->
                     paymentSetting.serviceChargeAmount
+                paymentSetting.serviceChargePercentage > BigDecimal.ZERO -> {
+                    val scBase = when (paymentSetting.serviceChargeSource?.uppercase()) {
+                        "AFTER_DISCOUNT" -> netAfterDiscount
+                        "BEFORE_TAX" -> calculatedSubTotal
+                        "DPP" -> if (isPriceIncludeTax)
+                            (calculatedSubTotal - calculatedTotalTax).max(BigDecimal.ZERO)
+                        else
+                            calculatedSubTotal
+                        "AFTER_TAX" -> if (isPriceIncludeTax)
+                            calculatedSubTotal
+                        else
+                            calculatedSubTotal.add(calculatedTotalTax)
+                        else -> calculatedSubTotal  // legacy fallback (no source set)
+                    }
+                    scBase.multiply(paymentSetting.serviceChargePercentage)
+                        .divide(hundred, 2, RoundingMode.HALF_UP)
+                }
                 else -> BigDecimal.ZERO
             }
         } else {
             BigDecimal.ZERO
         }
         val clientServiceCharge = parseBD(request.totalServiceCharge)
-        log.info("[VALIDATE] serviceCharge: isServiceCharge=${paymentSetting?.isServiceCharge} pct=${paymentSetting?.serviceChargePercentage} amt=${paymentSetting?.serviceChargeAmount} expected=$expectedServiceCharge client=$clientServiceCharge")
+        log.info("[VALIDATE] serviceCharge: isServiceCharge=${paymentSetting?.isServiceCharge} source=${paymentSetting?.serviceChargeSource} pct=${paymentSetting?.serviceChargePercentage} amt=${paymentSetting?.serviceChargeAmount} expected=$expectedServiceCharge client=$clientServiceCharge")
         if (clientServiceCharge.subtract(expectedServiceCharge).abs() > tolerance) {
             log.warn("[VALIDATE] FAIL serviceCharge: expected=$expectedServiceCharge got=$clientServiceCharge")
             return Pair("totalServiceCharge mismatch: expected $expectedServiceCharge, got $clientServiceCharge", null)
         }
 
-        // Compute pre-rounding total
+        // Compute pre-rounding total (discount/promo deducted from base)
         // If priceIncludeTax=true, tax is already embedded in subTotal — do not add it again
         val preRoundTotal = if (isPriceIncludeTax) {
-            calculatedSubTotal.add(expectedServiceCharge)
+            netAfterDiscount.add(expectedServiceCharge)
         } else {
-            calculatedSubTotal.add(calculatedTotalTax).add(expectedServiceCharge)
+            netAfterDiscount.add(calculatedTotalTax).add(expectedServiceCharge)
         }
         log.info("[VALIDATE] preRoundTotal=$preRoundTotal (isPriceIncludeTax=$isPriceIncludeTax)")
 
@@ -550,58 +618,47 @@ class TransactionService(
     }
 
     /**
-     * Variant: per variant group, exactly 1 variant must be selected (if group is required).
+     * Variant: per variant group yang terikat ke produk ini, kasir wajib memilih satu
+     * opsi dari setiap group yang isRequired=true.
      */
     private fun validateVariantSelection(productId: Long, selectedVariantId: Long?) {
-        val groups = productVariantGroupRepository.findByProductId(productId).filter { it.isActive }
+        // Cari semua group yang terikat ke produk via tabel product_variant
+        val groupIds = productVariantRepository.findByProductId(productId)
+            .map { it.variantGroupId }.distinct()
+        val groups = groupIds.mapNotNull { productVariantGroupRepository.findById(it).orElse(null) }
+            .filter { it.isActive }
+
         for (group in groups) {
-            val variantsInGroup = productVariantRepository.findByVariantGroupId(group.id).filter { it.isActive }
+            val variantsInGroup = productVariantRepository.findByVariantGroupIdAndProductId(group.id, productId)
+                .filter { it.isActive }
             if (variantsInGroup.isEmpty()) continue
             if (group.isRequired && selectedVariantId == null) {
-                throw IllegalArgumentException("Variant group '${group.name}' is required for product $productId")
+                throw IllegalArgumentException("Variant group '${group.name}' wajib dipilih untuk produk $productId")
             }
-            if (selectedVariantId != null) {
-                val belongsToGroup = variantsInGroup.any { it.id == selectedVariantId }
-                // Only validate when this group has variants that include the selected one
-                if (belongsToGroup) return // valid: exactly 1 from this group
+            if (selectedVariantId != null && variantsInGroup.any { it.id == selectedVariantId }) {
+                return // valid: variant dipilih dari group ini
             }
         }
-        // If a variantId was provided, ensure it actually belongs to the product
+
+        // Pastikan variantId yang dikirim milik produk dan aktif
         if (selectedVariantId != null) {
             val variant = productVariantRepository.findByProductIdAndId(productId, selectedVariantId)
-                ?: throw IllegalArgumentException("Variant $selectedVariantId does not belong to product $productId")
+                ?: throw IllegalArgumentException("Variant $selectedVariantId tidak milik produk $productId")
             if (!variant.isActive) {
-                throw IllegalArgumentException("Variant $selectedVariantId is not active")
+                throw IllegalArgumentException("Variant $selectedVariantId tidak aktif")
             }
         }
     }
 
     /**
-     * Modifier: per modifier group, number of selections must satisfy minSelect/maxSelect.
+     * Modifier: semua opsional, bebas kombinasi. Validasi setiap modifier milik produk dan aktif.
      */
     private fun validateModifierSelection(productId: Long, selectedModifierIds: List<Long>) {
-        val groups = productModifierGroupRepository.findByProductId(productId).filter { it.isActive }
-        for (group in groups) {
-            val modifiersInGroup = productModifierRepository.findByModifierGroupId(group.id).filter { it.isActive }
-            if (modifiersInGroup.isEmpty()) continue
-            val selectedInGroup = selectedModifierIds.count { id -> modifiersInGroup.any { it.id == id } }
-            if (selectedInGroup < group.minSelect) {
-                throw IllegalArgumentException(
-                    "Modifier group '${group.name}' requires at least ${group.minSelect} selection(s), got $selectedInGroup"
-                )
-            }
-            if (group.maxSelect > 0 && selectedInGroup > group.maxSelect) {
-                throw IllegalArgumentException(
-                    "Modifier group '${group.name}' allows at most ${group.maxSelect} selection(s), got $selectedInGroup"
-                )
-            }
-        }
-        // Validate all provided modifier IDs belong to the product
         selectedModifierIds.forEach { modId ->
             val modifier = productModifierRepository.findByProductIdAndId(productId, modId)
-                ?: throw IllegalArgumentException("Modifier $modId does not belong to product $productId")
+                ?: throw IllegalArgumentException("Modifier $modId tidak ditemukan di produk $productId")
             if (!modifier.isActive) {
-                throw IllegalArgumentException("Modifier $modId is not active")
+                throw IllegalArgumentException("Modifier $modId tidak aktif")
             }
         }
     }

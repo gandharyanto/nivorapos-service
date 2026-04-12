@@ -26,8 +26,9 @@ class ProductService(
     private val taxRepository: TaxRepository,
     private val productVariantGroupRepository: ProductVariantGroupRepository,
     private val productVariantRepository: ProductVariantRepository,
-    private val productModifierGroupRepository: ProductModifierGroupRepository,
-    private val productModifierRepository: ProductModifierRepository
+    private val productModifierRepository: ProductModifierRepository,
+    private val transactionItemRepository: TransactionItemRepository,
+    private val transactionItemModifierRepository: TransactionItemModifierRepository
 ) {
 
     fun list(
@@ -227,18 +228,25 @@ class ProductService(
         productRepository.saveAll(products)
     }
 
-    // ─── Variant Group ────────────────────────────────────────────────────────
+    // ─── Variant Group (merchant-level) ───────────────────────────────────────
+
+    fun listVariantGroups(): ApiResponse<List<ProductVariantGroupResponse>> {
+        val merchantId = SecurityUtils.getMerchantIdFromContext()
+        val groups = productVariantGroupRepository.findByMerchantId(merchantId)
+            .map { buildVariantGroupResponseEmpty(it) }
+        return ApiResponse.success("Variant groups retrieved", groups)
+    }
 
     @Transactional
-    fun addVariantGroup(productId: Long, request: VariantGroupRequest): ApiResponse<ProductVariantGroupResponse> {
-        val product = getProductForCurrentMerchant(productId)
-        require(product.productType == "VARIANT") { "Produk bukan tipe VARIANT" }
-
+    fun addVariantGroup(request: VariantGroupRequest): ApiResponse<ProductVariantGroupResponse> {
+        val merchantId = SecurityUtils.getMerchantIdFromContext()
         val username = SecurityUtils.getUsernameFromContext()
         val now = LocalDateTime.now()
 
+        require(request.name.isNotBlank()) { "name wajib diisi" }
+
         val group = ProductVariantGroup(
-            productId = productId,
+            merchantId = merchantId,
             name = request.name,
             isRequired = request.isRequired,
             displayOrder = request.displayOrder,
@@ -248,14 +256,16 @@ class ProductService(
             modifiedDate = now
         )
         val saved = productVariantGroupRepository.save(group)
-        return ApiResponse.success("Variant group created", buildVariantGroupResponse(saved))
+        return ApiResponse.success("Variant group created", buildVariantGroupResponseEmpty(saved))
     }
 
     @Transactional
-    fun updateVariantGroup(productId: Long, groupId: Long, request: VariantGroupRequest): ApiResponse<ProductVariantGroupResponse> {
-        getProductForCurrentMerchant(productId)
-        val group = productVariantGroupRepository.findByProductIdAndId(productId, groupId)
-            ?: throw RuntimeException("Variant group not found")
+    fun updateVariantGroup(groupId: Long, request: VariantGroupRequest): ApiResponse<ProductVariantGroupResponse> {
+        val merchantId = SecurityUtils.getMerchantIdFromContext()
+        val group = productVariantGroupRepository.findByMerchantIdAndId(merchantId, groupId)
+            ?: throw RuntimeException("Variant group tidak ditemukan")
+
+        require(request.name.isNotBlank()) { "name wajib diisi" }
 
         group.name = request.name
         group.isRequired = request.isRequired
@@ -264,14 +274,14 @@ class ProductService(
         group.modifiedDate = LocalDateTime.now()
 
         val saved = productVariantGroupRepository.save(group)
-        return ApiResponse.success("Variant group updated", buildVariantGroupResponse(saved))
+        return ApiResponse.success("Variant group updated", buildVariantGroupResponseEmpty(saved))
     }
 
     @Transactional
-    fun deleteVariantGroup(productId: Long, groupId: Long): ApiResponse<Nothing> {
-        getProductForCurrentMerchant(productId)
-        val group = productVariantGroupRepository.findByProductIdAndId(productId, groupId)
-            ?: throw RuntimeException("Variant group not found")
+    fun deleteVariantGroup(groupId: Long): ApiResponse<Nothing> {
+        val merchantId = SecurityUtils.getMerchantIdFromContext()
+        val group = productVariantGroupRepository.findByMerchantIdAndId(merchantId, groupId)
+            ?: throw RuntimeException("Variant group tidak ditemukan")
 
         val hasActiveVariants = productVariantRepository.existsByVariantGroupIdAndIsActiveTrue(groupId)
         require(!hasActiveVariants) { "Tidak dapat menghapus group yang masih memiliki variant aktif" }
@@ -287,8 +297,10 @@ class ProductService(
         val product = getProductForCurrentMerchant(productId)
         require(product.productType == "VARIANT") { "Produk bukan tipe VARIANT" }
 
-        productVariantGroupRepository.findByProductIdAndId(productId, request.variantGroupId)
-            ?: throw RuntimeException("Variant group tidak ditemukan atau bukan milik produk ini")
+        // Validasi variant group milik merchant yang sama
+        val merchantId = SecurityUtils.getMerchantIdFromContext()
+        productVariantGroupRepository.findByMerchantIdAndId(merchantId, request.variantGroupId)
+            ?: throw RuntimeException("Variant group tidak ditemukan atau bukan milik merchant ini")
 
         if (request.sku != null) {
             require(!productVariantRepository.existsBySkuAndProductId(request.sku, productId)) {
@@ -365,6 +377,12 @@ class ProductService(
         val variant = productVariantRepository.findByProductIdAndId(productId, variantId)
             ?: throw RuntimeException("Variant not found")
 
+        if (!isActive) {
+            require(!transactionItemRepository.existsByVariantId(variantId)) {
+                "Tidak dapat menonaktifkan varian yang masih digunakan di transaksi"
+            }
+        }
+
         variant.isActive = isActive
         variant.modifiedBy = SecurityUtils.getUsernameFromContext()
         variant.modifiedDate = LocalDateTime.now()
@@ -373,91 +391,27 @@ class ProductService(
         return ApiResponse.success("Variant updated", buildVariantResponse(saved))
     }
 
-    // ─── Modifier Group ───────────────────────────────────────────────────────
-
-    @Transactional
-    fun addModifierGroup(productId: Long, request: ModifierGroupRequest): ApiResponse<ProductModifierGroupResponse> {
-        val product = getProductForCurrentMerchant(productId)
-        require(product.productType == "MODIFIER") { "Produk bukan tipe MODIFIER" }
-        require(request.maxSelect >= request.minSelect && request.maxSelect >= 1) {
-            "maxSelect harus >= minSelect dan >= 1"
-        }
-
-        val username = SecurityUtils.getUsernameFromContext()
-        val now = LocalDateTime.now()
-
-        val group = ProductModifierGroup(
-            productId = productId,
-            name = request.name,
-            isRequired = request.isRequired,
-            minSelect = request.minSelect,
-            maxSelect = request.maxSelect,
-            displayOrder = request.displayOrder,
-            createdBy = username,
-            createdDate = now,
-            modifiedBy = username,
-            modifiedDate = now
-        )
-        val saved = productModifierGroupRepository.save(group)
-        return ApiResponse.success("Modifier group created", buildModifierGroupResponse(saved))
-    }
-
-    @Transactional
-    fun updateModifierGroup(productId: Long, groupId: Long, request: ModifierGroupRequest): ApiResponse<ProductModifierGroupResponse> {
-        getProductForCurrentMerchant(productId)
-        require(request.maxSelect >= request.minSelect && request.maxSelect >= 1) {
-            "maxSelect harus >= minSelect dan >= 1"
-        }
-
-        val group = productModifierGroupRepository.findByProductIdAndId(productId, groupId)
-            ?: throw RuntimeException("Modifier group not found")
-
-        group.name = request.name
-        group.isRequired = request.isRequired
-        group.minSelect = request.minSelect
-        group.maxSelect = request.maxSelect
-        group.displayOrder = request.displayOrder
-        group.modifiedBy = SecurityUtils.getUsernameFromContext()
-        group.modifiedDate = LocalDateTime.now()
-
-        val saved = productModifierGroupRepository.save(group)
-        return ApiResponse.success("Modifier group updated", buildModifierGroupResponse(saved))
-    }
-
-    @Transactional
-    fun deleteModifierGroup(productId: Long, groupId: Long): ApiResponse<Nothing> {
-        getProductForCurrentMerchant(productId)
-        val group = productModifierGroupRepository.findByProductIdAndId(productId, groupId)
-            ?: throw RuntimeException("Modifier group not found")
-
-        val hasActiveModifiers = productModifierRepository.existsByModifierGroupIdAndIsActiveTrue(groupId)
-        require(!hasActiveModifiers) { "Tidak dapat menghapus group yang masih memiliki modifier aktif" }
-
-        productModifierGroupRepository.delete(group)
-        return ApiResponse.success("Modifier group deleted")
-    }
-
     // ─── Modifier ─────────────────────────────────────────────────────────────
 
     @Transactional
     fun addModifier(productId: Long, request: ModifierRequest): ApiResponse<ProductModifierResponse> {
         val product = getProductForCurrentMerchant(productId)
-        require(product.productType == "MODIFIER") { "Produk bukan tipe MODIFIER" }
+        require(product.productType in listOf("MODIFIER", "VARIANT")) {
+            "Modifier hanya dapat ditambahkan ke produk tipe MODIFIER atau VARIANT"
+        }
 
-        productModifierGroupRepository.findByProductIdAndId(productId, request.modifierGroupId)
-            ?: throw RuntimeException("Modifier group tidak ditemukan atau bukan milik produk ini")
+        require(request.name.isNotBlank()) { "name wajib diisi" }
+        require(request.additionalPrice >= BigDecimal.ZERO) { "additionalPrice harus >= 0" }
 
         val username = SecurityUtils.getUsernameFromContext()
         val now = LocalDateTime.now()
 
-        if (request.isDefault) clearModifierGroupDefault(request.modifierGroupId)
+        if (request.isDefault) clearProductModifierDefault(productId)
 
         val modifier = ProductModifier(
             productId = productId,
-            modifierGroupId = request.modifierGroupId,
             name = request.name,
             additionalPrice = request.additionalPrice,
-            isStock = request.isStock,
             isDefault = request.isDefault,
             createdBy = username,
             createdDate = now,
@@ -474,11 +428,10 @@ class ProductService(
         val modifier = productModifierRepository.findByProductIdAndId(productId, modifierId)
             ?: throw RuntimeException("Modifier not found")
 
-        if (request.isDefault && !modifier.isDefault) clearModifierGroupDefault(modifier.modifierGroupId)
+        if (request.isDefault && !modifier.isDefault) clearProductModifierDefault(productId)
 
         modifier.name = request.name
         modifier.additionalPrice = request.additionalPrice
-        modifier.isStock = request.isStock
         modifier.isDefault = request.isDefault
         modifier.modifiedBy = SecurityUtils.getUsernameFromContext()
         modifier.modifiedDate = LocalDateTime.now()
@@ -492,6 +445,12 @@ class ProductService(
         getProductForCurrentMerchant(productId)
         val modifier = productModifierRepository.findByProductIdAndId(productId, modifierId)
             ?: throw RuntimeException("Modifier not found")
+
+        if (!isActive) {
+            require(!transactionItemModifierRepository.existsByModifierId(modifierId)) {
+                "Tidak dapat menonaktifkan modifier yang masih digunakan di transaksi"
+            }
+        }
 
         modifier.isActive = isActive
         modifier.modifiedBy = SecurityUtils.getUsernameFromContext()
@@ -558,12 +517,17 @@ class ProductService(
             )
         } else null
 
+        // Variant groups: tampilkan hanya variant group yang terikat ke produk ini
         val variantGroups = if (product.productType == "VARIANT") {
-            productVariantGroupRepository.findByProductId(product.id).map { buildVariantGroupResponse(it) }
+            val groupIds = productVariantRepository.findByProductId(product.id)
+                .map { it.variantGroupId }.distinct()
+            groupIds.mapNotNull { productVariantGroupRepository.findById(it).orElse(null) }
+                .map { buildVariantGroupResponse(it, product.id) }
         } else emptyList()
 
-        val modifierGroups = if (product.productType == "MODIFIER") {
-            productModifierGroupRepository.findByProductId(product.id).map { buildModifierGroupResponse(it) }
+        // Modifiers: tampilkan untuk MODIFIER dan VARIANT (Pola 4)
+        val modifiers = if (product.productType in listOf("MODIFIER", "VARIANT")) {
+            productModifierRepository.findByProductId(product.id).map { buildModifierResponse(it) }
         } else emptyList()
 
         return ProductResponse(
@@ -587,12 +551,12 @@ class ProductService(
             categories = categories,
             productImages = productImages,
             variantGroups = variantGroups,
-            modifierGroups = modifierGroups
+            modifiers = modifiers
         )
     }
 
-    private fun buildVariantGroupResponse(group: ProductVariantGroup): ProductVariantGroupResponse {
-        val variants = productVariantRepository.findByVariantGroupId(group.id)
+    private fun buildVariantGroupResponse(group: ProductVariantGroup, productId: Long): ProductVariantGroupResponse {
+        val variants = productVariantRepository.findByVariantGroupIdAndProductId(group.id, productId)
             .map { buildVariantResponse(it) }
         return ProductVariantGroupResponse(
             id = group.id,
@@ -601,6 +565,18 @@ class ProductService(
             displayOrder = group.displayOrder,
             isActive = group.isActive,
             variants = variants
+        )
+    }
+
+    // Untuk response variant group tanpa variant (list merchant-level)
+    private fun buildVariantGroupResponseEmpty(group: ProductVariantGroup): ProductVariantGroupResponse {
+        return ProductVariantGroupResponse(
+            id = group.id,
+            name = group.name,
+            isRequired = group.isRequired,
+            displayOrder = group.displayOrder,
+            isActive = group.isActive,
+            variants = emptyList()
         )
     }
 
@@ -620,27 +596,11 @@ class ProductService(
         )
     }
 
-    private fun buildModifierGroupResponse(group: ProductModifierGroup): ProductModifierGroupResponse {
-        val modifiers = productModifierRepository.findByModifierGroupId(group.id)
-            .map { buildModifierResponse(it) }
-        return ProductModifierGroupResponse(
-            id = group.id,
-            name = group.name,
-            isRequired = group.isRequired,
-            minSelect = group.minSelect,
-            maxSelect = group.maxSelect,
-            displayOrder = group.displayOrder,
-            isActive = group.isActive,
-            modifiers = modifiers
-        )
-    }
-
     private fun buildModifierResponse(modifier: ProductModifier): ProductModifierResponse {
         return ProductModifierResponse(
             id = modifier.id,
             name = modifier.name,
             additionalPrice = modifier.additionalPrice,
-            isStock = modifier.isStock,
             isDefault = modifier.isDefault,
             isActive = modifier.isActive
         )
@@ -652,8 +612,8 @@ class ProductService(
         if (existing.isNotEmpty()) productVariantRepository.saveAll(existing)
     }
 
-    private fun clearModifierGroupDefault(modifierGroupId: Long) {
-        val existing = productModifierRepository.findByModifierGroupIdAndIsDefaultTrue(modifierGroupId)
+    private fun clearProductModifierDefault(productId: Long) {
+        val existing = productModifierRepository.findByProductIdAndIsDefaultTrue(productId)
         existing.forEach { it.isDefault = false }
         if (existing.isNotEmpty()) productModifierRepository.saveAll(existing)
     }
@@ -690,17 +650,12 @@ class ProductService(
         val tax = taxRepository.findById(taxId).orElse(null)
             ?: return basePrice.setScale(2, RoundingMode.HALF_UP)
 
-        val taxAmount = calculateItemTaxAmount(
-            basePrice = basePrice,
-            isTaxable = isTaxable,
-            isTaxEnabled = isTaxEnabled,
-            isPriceIncludeTax = isPriceIncludeTax,
-            percentage = tax.percentage
-        )
+        val hundred = BigDecimal("100")
         return if (isPriceIncludeTax) {
             basePrice.setScale(2, RoundingMode.HALF_UP)
         } else {
-            basePrice.add(taxAmount).setScale(2, RoundingMode.HALF_UP)
+            basePrice.add(basePrice.multiply(tax.percentage).divide(hundred, 2, RoundingMode.HALF_UP))
+                .setScale(2, RoundingMode.HALF_UP)
         }
     }
 }

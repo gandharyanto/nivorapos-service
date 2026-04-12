@@ -4,8 +4,6 @@ import java.math.BigDecimal
 
 data class TransactionItemModifierResponse(
     val modifierId: Long,
-    val modifierGroupId: Long,
-    val modifierGroupName: String,
     val modifierName: String,
     val additionalPrice: BigDecimal
 )

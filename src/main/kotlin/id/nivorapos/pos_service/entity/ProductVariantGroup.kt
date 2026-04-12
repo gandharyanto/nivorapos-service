@@ -10,8 +10,8 @@ class ProductVariantGroup(
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
 
-    @Column(name = "product_id")
-    var productId: Long = 0,
+    @Column(name = "merchant_id")
+    var merchantId: Long = 0,
 
     @Column(name = "name")
     var name: String = "",

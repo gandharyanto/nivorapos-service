@@ -14,9 +14,6 @@ class ProductModifier(
     @Column(name = "product_id")
     var productId: Long = 0,
 
-    @Column(name = "modifier_group_id")
-    var modifierGroupId: Long = 0,
-
     @Column(name = "name")
     var name: String = "",
 

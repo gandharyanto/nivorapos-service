@@ -87,48 +87,6 @@ class ProductController(
         }
     }
 
-    // ─── Variant Group ────────────────────────────────────────────────────────
-
-    @PostMapping("/{productId}/variant-group/add")
-    @PreAuthorize("hasAuthority('PRODUCT_EDIT')")
-    fun addVariantGroup(
-        @PathVariable productId: Long,
-        @RequestBody request: VariantGroupRequest
-    ): ResponseEntity<ApiResponse<ProductVariantGroupResponse>> {
-        return try {
-            ResponseEntity.ok(productService.addVariantGroup(productId, request))
-        } catch (e: Exception) {
-            ResponseEntity.status(400).body(ApiResponse.error(e.message ?: "Failed"))
-        }
-    }
-
-    @PutMapping("/{productId}/variant-group/{groupId}")
-    @PreAuthorize("hasAuthority('PRODUCT_EDIT')")
-    fun updateVariantGroup(
-        @PathVariable productId: Long,
-        @PathVariable groupId: Long,
-        @RequestBody request: VariantGroupRequest
-    ): ResponseEntity<ApiResponse<ProductVariantGroupResponse>> {
-        return try {
-            ResponseEntity.ok(productService.updateVariantGroup(productId, groupId, request))
-        } catch (e: Exception) {
-            ResponseEntity.status(400).body(ApiResponse.error(e.message ?: "Failed"))
-        }
-    }
-
-    @DeleteMapping("/{productId}/variant-group/{groupId}")
-    @PreAuthorize("hasAuthority('PRODUCT_EDIT')")
-    fun deleteVariantGroup(
-        @PathVariable productId: Long,
-        @PathVariable groupId: Long
-    ): ResponseEntity<ApiResponse<Nothing>> {
-        return try {
-            ResponseEntity.ok(productService.deleteVariantGroup(productId, groupId))
-        } catch (e: Exception) {
-            ResponseEntity.status(400).body(ApiResponse.error(e.message ?: "Failed"))
-        }
-    }
-
     // ─── Variant ──────────────────────────────────────────────────────────────
 
     @PostMapping("/{productId}/variant/add")
@@ -167,48 +125,6 @@ class ProductController(
     ): ResponseEntity<ApiResponse<ProductVariantResponse>> {
         return try {
             ResponseEntity.ok(productService.setVariantActive(productId, variantId, isActive))
-        } catch (e: Exception) {
-            ResponseEntity.status(400).body(ApiResponse.error(e.message ?: "Failed"))
-        }
-    }
-
-    // ─── Modifier Group ───────────────────────────────────────────────────────
-
-    @PostMapping("/{productId}/modifier-group/add")
-    @PreAuthorize("hasAuthority('PRODUCT_EDIT')")
-    fun addModifierGroup(
-        @PathVariable productId: Long,
-        @RequestBody request: ModifierGroupRequest
-    ): ResponseEntity<ApiResponse<ProductModifierGroupResponse>> {
-        return try {
-            ResponseEntity.ok(productService.addModifierGroup(productId, request))
-        } catch (e: Exception) {
-            ResponseEntity.status(400).body(ApiResponse.error(e.message ?: "Failed"))
-        }
-    }
-
-    @PutMapping("/{productId}/modifier-group/{groupId}")
-    @PreAuthorize("hasAuthority('PRODUCT_EDIT')")
-    fun updateModifierGroup(
-        @PathVariable productId: Long,
-        @PathVariable groupId: Long,
-        @RequestBody request: ModifierGroupRequest
-    ): ResponseEntity<ApiResponse<ProductModifierGroupResponse>> {
-        return try {
-            ResponseEntity.ok(productService.updateModifierGroup(productId, groupId, request))
-        } catch (e: Exception) {
-            ResponseEntity.status(400).body(ApiResponse.error(e.message ?: "Failed"))
-        }
-    }
-
-    @DeleteMapping("/{productId}/modifier-group/{groupId}")
-    @PreAuthorize("hasAuthority('PRODUCT_EDIT')")
-    fun deleteModifierGroup(
-        @PathVariable productId: Long,
-        @PathVariable groupId: Long
-    ): ResponseEntity<ApiResponse<Nothing>> {
-        return try {
-            ResponseEntity.ok(productService.deleteModifierGroup(productId, groupId))
         } catch (e: Exception) {
             ResponseEntity.status(400).body(ApiResponse.error(e.message ?: "Failed"))
         }

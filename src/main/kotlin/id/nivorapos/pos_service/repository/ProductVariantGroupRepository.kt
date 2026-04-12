@@ -6,7 +6,7 @@ import org.springframework.stereotype.Repository
 
 @Repository
 interface ProductVariantGroupRepository : JpaRepository<ProductVariantGroup, Long> {
-    fun findByProductId(productId: Long): List<ProductVariantGroup>
-    fun findByProductIdAndId(productId: Long, id: Long): ProductVariantGroup?
-    fun existsByProductId(productId: Long): Boolean
+    fun findByMerchantId(merchantId: Long): List<ProductVariantGroup>
+    fun findByMerchantIdAndId(merchantId: Long, id: Long): ProductVariantGroup?
+    fun existsByMerchantId(merchantId: Long): Boolean
 }

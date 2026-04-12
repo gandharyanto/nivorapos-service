@@ -7,8 +7,7 @@ import org.springframework.stereotype.Repository
 @Repository
 interface ProductModifierRepository : JpaRepository<ProductModifier, Long> {
     fun findByProductId(productId: Long): List<ProductModifier>
-    fun findByModifierGroupId(modifierGroupId: Long): List<ProductModifier>
     fun findByProductIdAndId(productId: Long, id: Long): ProductModifier?
-    fun existsByModifierGroupIdAndIsActiveTrue(modifierGroupId: Long): Boolean
-    fun findByModifierGroupIdAndIsDefaultTrue(modifierGroupId: Long): List<ProductModifier>
+    fun findByProductIdAndIsDefaultTrue(productId: Long): List<ProductModifier>
+    fun existsByIdAndProductId(id: Long, productId: Long): Boolean
 }

@@ -14,12 +14,6 @@ class TransactionItemModifier(
     @Column(name = "transaction_item_id")
     var transactionItemId: Long = 0,
 
-    @Column(name = "modifier_group_id")
-    var modifierGroupId: Long = 0,
-
-    @Column(name = "modifier_group_name")
-    var modifierGroupName: String = "",
-
     @Column(name = "modifier_id")
     var modifierId: Long = 0,
 

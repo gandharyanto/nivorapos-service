@@ -12,4 +12,5 @@ interface ProductVariantRepository : JpaRepository<ProductVariant, Long> {
     fun existsBySkuAndProductId(sku: String, productId: Long): Boolean
     fun existsByVariantGroupIdAndIsActiveTrue(variantGroupId: Long): Boolean
     fun findByVariantGroupIdAndIsDefaultTrue(variantGroupId: Long): List<ProductVariant>
+    fun findByVariantGroupIdAndProductId(variantGroupId: Long, productId: Long): List<ProductVariant>
 }
