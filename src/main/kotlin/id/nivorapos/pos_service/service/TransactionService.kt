@@ -30,6 +30,8 @@ class TransactionService(
     private val transactionItemModifierRepository: TransactionItemModifierRepository,
     private val transactionQueueRepository: TransactionQueueRepository,
     private val paymentRepository: PaymentRepository,
+    private val paymentMethodRepository: PaymentMethodRepository,
+    private val merchantPaymentMethodRepository: MerchantPaymentMethodRepository,
     private val productRepository: ProductRepository,
     private val stockRepository: StockRepository,
     private val stockMovementRepository: StockMovementRepository,
@@ -145,7 +147,16 @@ class TransactionService(
         )
         val queueId: Long = transactionQueueRepository.save(queue).id
 
-        val isCash = request.paymentMethod?.uppercase() == "CASH"
+        val paymentMethodConfig = resolveMerchantPaymentMethod(merchantId, request.paymentMethod)
+        val isCash = paymentMethodConfig?.paymentType?.equals("CASH", ignoreCase = true) == true ||
+            request.paymentMethod?.equals("CASH", ignoreCase = true) == true
+        val isExternalPayment = paymentMethodConfig?.category?.equals("EXTERNAL", ignoreCase = true) == true ||
+            (
+                paymentMethodConfig != null &&
+                    paymentMethodConfig.category?.equals("INTERNAL", ignoreCase = true) != true &&
+                    paymentMethodConfig.paymentType?.equals("CASH", ignoreCase = true) != true
+                )
+        val isImmediatelyPaid = isCash || isExternalPayment
 
         val transaction = Transaction(
             merchantId = merchantId,
@@ -153,7 +164,7 @@ class TransactionService(
             username = username,
             trxId = trxId,
             transactionOrigin = request.transactionOrigin,
-            status = if (isCash) "PAID" else "PENDING",
+            status = if (isImmediatelyPaid) "PAID" else "PENDING",
             paymentMethod = request.paymentMethod,
             priceIncludeTax = request.priceIncludeTax,
             subTotal = amounts.subTotal,
@@ -275,9 +286,9 @@ class TransactionService(
             paymentMethod = request.paymentMethod,
             paymentSource = request.paymentSource,
             amountPaid = amounts.totalAmount,
-            status = if (isCash) "PAID" else "PENDING",
-            isEffective = isCash,
-            paymentDate = if (isCash) now else null,
+            status = if (isImmediatelyPaid) "PAID" else "PENDING",
+            isEffective = isImmediatelyPaid,
+            paymentDate = if (isImmediatelyPaid) now else null,
             paymentReference = request.paymentReference,
             createdBy = username,
             createdDate = now,
@@ -440,6 +451,24 @@ class TransactionService(
             transactionItems = items,
             payments = payments
         )
+    }
+
+    private fun resolveMerchantPaymentMethod(merchantId: Long, requestedPaymentMethod: String?): PaymentMethod? {
+        val normalized = requestedPaymentMethod?.trim()?.uppercase()?.replace(" ", "_") ?: return null
+        val merchantMethodIds = merchantPaymentMethodRepository.findByMerchantIdAndIsEnabledTrue(merchantId)
+            .map { it.paymentMethodId }
+            .toSet()
+
+        if (merchantMethodIds.isEmpty()) return null
+
+        return paymentMethodRepository.findAll()
+            .asSequence()
+            .filter { it.id in merchantMethodIds && it.isActive }
+            .firstOrNull { paymentMethod ->
+                val code = paymentMethod.code.trim().uppercase()
+                val name = paymentMethod.name.trim().uppercase().replace(" ", "_")
+                code == normalized || name == normalized
+            }
     }
 
     private fun Transaction.toListResponse() = TransactionListResponse(
