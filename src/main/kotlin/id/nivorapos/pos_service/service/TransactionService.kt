@@ -20,6 +20,7 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Random
 
@@ -47,21 +48,43 @@ class TransactionService(
     private val entityManager: EntityManager
 ) {
     private val log = LoggerFactory.getLogger(TransactionService::class.java)
+    private val appZoneId: ZoneId = ZoneId.of("Asia/Jakarta")
 
     fun list(
         page: Int,
         size: Int,
         startDate: LocalDateTime?,
-        endDate: LocalDateTime?
+        endDate: LocalDateTime?,
+        sortBy: String = "createdDate",
+        sortType: String = "DESC"
     ): PagedResponse<TransactionListResponse> {
         val merchantId = SecurityUtils.getMerchantIdFromContext()
-        val pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdDate"))
+        val allowedSortFields = setOf("id", "trxId", "status", "paymentMethod", "totalAmount", "createdDate", "modifiedDate")
+        val safeSortBy = sortBy.takeIf { it in allowedSortFields } ?: "createdDate"
+        val safeDirection = when (sortType.uppercase()) {
+            "ASC" -> Sort.Direction.ASC
+            else -> Sort.Direction.DESC
+        }
+        val pageable = PageRequest.of(page, size, Sort.by(safeDirection, safeSortBy))
 
         val start = startDate ?: LocalDateTime.of(2000, 1, 1, 0, 0)
-        val end = endDate ?: LocalDateTime.now().plusDays(1)
+        val end = endDate ?: nowInAppZone().plusDays(1)
 
         val result = transactionRepository.findByMerchantIdAndCreatedDateBetween(
             merchantId, start, end, pageable
+        )
+
+        log.info(
+            "[TRANSACTION_LIST] merchantId={} page={} size={} start={} end={} sortBy={} sortType={} resultCount={} totalElements={}",
+            merchantId,
+            page,
+            size,
+            start,
+            end,
+            safeSortBy,
+            safeDirection,
+            result.numberOfElements,
+            result.totalElements
         )
 
         return PagedResponse(
@@ -84,7 +107,7 @@ class TransactionService(
     fun create(request: TransactionRequest): ApiResponse<TransactionDetailResponse> {
         val merchantId = SecurityUtils.getMerchantIdFromContext()
         val username = SecurityUtils.getUsernameFromContext()
-        val now = LocalDateTime.now()
+        val now = nowInAppZone()
 
         // Build discountItems early — needed for discount/promo resolution and SC basis
         val discountItems = request.items.map { itemReq ->
@@ -132,13 +155,13 @@ class TransactionService(
         val trxId = "TRX-${now.format(formatter)}-$random"
 
         // Handle queue — always auto-generate
-        val count = transactionQueueRepository.countByMerchantIdAndQueueDate(merchantId, LocalDate.now())
+        val count = transactionQueueRepository.countByMerchantIdAndQueueDate(merchantId, todayInAppZone())
         val generatedQueueNumber = "A${String.format("%03d", count + 1)}"
         val queue = TransactionQueue(
             merchantId = merchantId,
             outletId = request.outletId,
             queueNumber = generatedQueueNumber,
-            queueDate = LocalDate.now(),
+            queueDate = todayInAppZone(),
             status = "ACTIVE",
             createdBy = username,
             createdDate = now,
@@ -304,7 +327,7 @@ class TransactionService(
     @Transactional
     fun update(request: TransactionUpdateRequest): ApiResponse<TransactionDetailResponse> {
         val username = SecurityUtils.getUsernameFromContext()
-        val now = LocalDateTime.now()
+        val now = nowInAppZone()
 
         // Lookup transaction: by paymentTrxId first (payment gateway callback), then by transactionId or merchant trx id
         val merchantTrxId = request.code ?: request.merchantTrxId
@@ -314,8 +337,9 @@ class TransactionService(
                     .orElseThrow {
                         RuntimeException(
                             "Payment not found: ${request.paymentTrxId}. " +
-                                "Call PUT /pos/transaction/initiate-payment/{merchantTrxId} first " +
-                                "to bind paymentTrxId, or update the transaction via /pos/transaction/update/{merchantTrxId}."
+                                "Send merchantTrxId in PUT /pos/transaction/update/ to bind paymentTrxId directly, " +
+                                "or call PUT /pos/transaction/initiate-payment/{merchantTrxId} first, " +
+                                "or update the transaction via PUT /pos/transaction/update/{merchantTrxId}."
                         )
                     }
                 transactionRepository.findById(payment.transactionId)
@@ -360,7 +384,7 @@ class TransactionService(
     @Transactional
     fun initiatePayment(merchantTrxId: String, request: InitiatePaymentRequest): ApiResponse<Nothing> {
         val username = SecurityUtils.getUsernameFromContext()
-        val now = LocalDateTime.now()
+        val now = nowInAppZone()
 
         val transaction = transactionRepository.findByTrxId(merchantTrxId)
             .orElseThrow { RuntimeException("Transaction not found: $merchantTrxId") }
@@ -470,6 +494,10 @@ class TransactionService(
                 code == normalized || name == normalized
             }
     }
+
+    private fun nowInAppZone(): LocalDateTime = LocalDateTime.now(appZoneId)
+
+    private fun todayInAppZone(): LocalDate = LocalDate.now(appZoneId)
 
     private fun Transaction.toListResponse() = TransactionListResponse(
         id = id,
