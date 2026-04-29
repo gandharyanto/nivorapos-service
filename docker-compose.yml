@@ -6,15 +6,20 @@ services:
     ports:
       - "8083:8080"
     environment:
+      SPRING_PROFILES_ACTIVE: prod
       SPRING_DATASOURCE_URL: jdbc:postgresql://192.168.1.100:5432/nivora-pos-db
       SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_DATASOURCE_PASSWORD: ShaninHanan23
       JWT_SECRET: NivoraPOSSecretKey2024VeryLongSecretForHS256Algorithm
-      JWT_EXPIRATION: 86400000
+    networks:
+      - shared-network
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
+
+networks:
+  shared-network:
+    external: true
