@@ -48,7 +48,8 @@ class SecurityConfig(
         val config = CorsConfiguration()
         config.allowedOriginPatterns = allowedOrigins.split(",").map { it.trim() }
         config.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH")
-        config.allowedHeaders = listOf("Content-Type", "Authorization", "Accept")
+        config.allowedHeaders = listOf("*")
+        config.exposedHeaders = listOf("Authorization")
         config.allowCredentials = true
         config.maxAge = 3600L
         val source = UrlBasedCorsConfigurationSource()
