@@ -1,8 +1,12 @@
 package id.nivorapos.pos_service.config
 
+import tools.jackson.databind.ObjectMapper
+import id.nivorapos.pos_service.security.ImageUploadSignatureFilter
 import id.nivorapos.pos_service.security.JwtAuthenticationFilter
+import jakarta.servlet.http.HttpServletResponse
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.http.MediaType
 import org.springframework.security.authentication.AuthenticationManager
 import org.springframework.security.authentication.AuthenticationProvider
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider
@@ -11,7 +15,6 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
 import org.springframework.security.core.userdetails.UserDetailsService
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
@@ -20,16 +23,16 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableWebSecurity
 class SecurityConfig(
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
-    private val userDetailsService: UserDetailsService
+    private val imageUploadSignatureFilter: ImageUploadSignatureFilter,
+    private val userDetailsService: UserDetailsService,
+    private val passwordEncoder: PasswordEncoder,
+    private val objectMapper: ObjectMapper
 ) {
-
-    @Bean
-    fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
 
     @Bean
     fun authenticationProvider(): AuthenticationProvider {
         val provider = DaoAuthenticationProvider(userDetailsService)
-        provider.setPasswordEncoder(passwordEncoder())
+        provider.setPasswordEncoder(passwordEncoder)
         return provider
     }
 
@@ -44,14 +47,26 @@ class SecurityConfig(
             .csrf { it.disable() }
             .authorizeHttpRequests { auth ->
                 auth
-                    .requestMatchers("/pos/auth/login", "/actuator/**").permitAll()
+                    .requestMatchers("/pos/auth/login", "/images/upload", "/images/**", "/actuator/**").permitAll()
                     .anyRequest().authenticated()
             }
             .sessionManagement { session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             }
+            .exceptionHandling { ex ->
+                ex.authenticationEntryPoint { _, response, authException ->
+                    response.status = HttpServletResponse.SC_UNAUTHORIZED
+                    response.contentType = MediaType.APPLICATION_JSON_VALUE
+                    response.writer.write(
+                        objectMapper.writeValueAsString(
+                            mapOf("status" to false, "message" to (authException.message ?: "Unauthorized — missing or invalid token"))
+                        )
+                    )
+                }
+            }
             .authenticationProvider(authenticationProvider())
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
+            .addFilterAfter(imageUploadSignatureFilter, JwtAuthenticationFilter::class.java)
 
         return http.build()
     }
