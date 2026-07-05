@@ -185,6 +185,42 @@ class PromotionService(
     }
 
     /**
+     * GET /pos/promotion/active
+     * Promosi yang sedang berlaku saat ini (aktif, dalam rentang tanggal, channel POS, hari valid).
+     * Dipakai POS untuk menampilkan badge promo di layar produk, tanpa konteks transaksi.
+     */
+    fun listActive(): ApiResponse<List<PromotionResponse>> {
+        val merchantId = SecurityUtils.getMerchantIdFromContext()
+        val now = LocalDateTime.now()
+        val today = now.dayOfWeek
+
+        val promos = promotionRepository.findByMerchantIdAndDeletedDateIsNullOrderByPriorityAsc(merchantId)
+            .filter { promo ->
+                promo.isActive &&
+                (promo.startDate == null || !promo.startDate!!.isAfter(now)) &&
+                (promo.endDate == null || !promo.endDate!!.isBefore(now)) &&
+                (promo.channel == "POS" || promo.channel == "BOTH") &&
+                (promo.validDays == null || today.name in promo.validDays!!.split(",").map { it.trim().uppercase() })
+            }
+        if (promos.isEmpty()) return ApiResponse.success("Active promotions retrieved", emptyList())
+
+        val ids = promos.map { it.id }
+        val buyProductsByPromo    = promotionBuyProductRepository.findByPromotionIdIn(ids).groupBy { it.promotionId }.mapValues { (_, v) -> v.map { it.productId } }
+        val buyCategoryByPromo    = promotionBuyCategoryRepository.findByPromotionIdIn(ids).groupBy { it.promotionId }.mapValues { (_, v) -> v.map { it.categoryId } }
+        val rewardProductsByPromo = promotionRewardProductRepository.findByPromotionIdIn(ids).groupBy { it.promotionId }.mapValues { (_, v) -> v.map { it.productId } }
+        val rewardCategoryByPromo = promotionRewardCategoryRepository.findByPromotionIdIn(ids).groupBy { it.promotionId }.mapValues { (_, v) -> v.map { it.categoryId } }
+        val outletsByPromo        = promotionOutletRepository.findByPromotionIdIn(ids).groupBy { it.promotionId }.mapValues { (_, v) -> v.map { it.outletId } }
+
+        return ApiResponse.success("Active promotions retrieved", promos.map {
+            buildResponse(it,
+                buyProductsByPromo[it.id] ?: emptyList(), buyCategoryByPromo[it.id] ?: emptyList(),
+                rewardProductsByPromo[it.id] ?: emptyList(), rewardCategoryByPromo[it.id] ?: emptyList(),
+                outletsByPromo[it.id] ?: emptyList()
+            )
+        })
+    }
+
+    /**
      * Auto-apply semua promosi aktif untuk merchant.
      * Dipanggil dari TransactionService saat transaksi dibuat.
      * Mengembalikan list promosi yang diterapkan beserta total promoAmount.

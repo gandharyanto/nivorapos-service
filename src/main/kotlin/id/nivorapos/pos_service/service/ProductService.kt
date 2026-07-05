@@ -457,6 +457,83 @@ class ProductService(
         return ApiResponse.success("Variant updated", buildVariantResponse(saved))
     }
 
+    // ─── Option Groups (variant + modifier gabungan, dipakai POS sebelum add-to-cart) ──
+
+    fun getOptionGroups(productId: Long): ApiResponse<ProductOptionGroupsData> {
+        val product = getProductForCurrentMerchant(productId)
+
+        val variantGroups = if (product.productType == "VARIANT") {
+            val groupIds = productVariantRepository.findByProductId(product.id)
+                .map { it.variantGroupId }.distinct()
+            groupIds.mapNotNull { productVariantGroupRepository.findById(it).orElse(null) }
+                .map { group ->
+                    val variants = productVariantRepository.findByVariantGroupIdAndProductId(group.id, product.id)
+                    OptionGroupResponse(
+                        groupId = group.id,
+                        name = group.name,
+                        groupType = "VARIANT",
+                        isCombinationMember = false,
+                        selectionType = "SINGLE",
+                        isRequired = group.isRequired,
+                        minSelection = if (group.isRequired) 1 else 0,
+                        maxSelection = 1,
+                        options = variants.map { v ->
+                            val qty = if (v.isStock) {
+                                stockRepository.findByProductIdAndVariantId(v.productId, v.id).map { it.qty }.orElse(0)
+                            } else 0
+                            OptionItemResponse(
+                                optionId = v.id,
+                                variantId = v.id,
+                                name = v.name,
+                                priceAdjustment = v.additionalPrice,
+                                qty = qty,
+                                isUnlimitedStock = !v.isStock,
+                                isOptional = !group.isRequired,
+                                displayOrder = 0
+                            )
+                        }
+                    )
+                }
+        } else emptyList()
+
+        val modifierGroups = if (product.productType in listOf("MODIFIER", "VARIANT")) {
+            val modifiers = productModifierRepository.findByProductId(product.id)
+            if (modifiers.isEmpty()) emptyList() else listOf(
+                OptionGroupResponse(
+                    groupId = 0,
+                    name = "Modifier",
+                    groupType = "MODIFIER",
+                    isCombinationMember = false,
+                    selectionType = "MULTIPLE",
+                    isRequired = false,
+                    minSelection = 0,
+                    maxSelection = modifiers.size,
+                    options = modifiers.map { m ->
+                        OptionItemResponse(
+                            optionId = m.id,
+                            variantId = null,
+                            name = m.name,
+                            priceAdjustment = m.additionalPrice,
+                            qty = 0,
+                            isUnlimitedStock = true,
+                            isOptional = true,
+                            displayOrder = 0
+                        )
+                    }
+                )
+            )
+        } else emptyList()
+
+        val data = ProductOptionGroupsData(
+            productId = product.id,
+            productType = product.productType,
+            isPriceAdjustable = variantGroups.isNotEmpty() || modifierGroups.isNotEmpty(),
+            variantGroups = variantGroups,
+            modifierGroups = modifierGroups
+        )
+        return ApiResponse.success("Option groups retrieved", data)
+    }
+
     // ─── Modifier ─────────────────────────────────────────────────────────────
 
     @Transactional

@@ -68,7 +68,7 @@ class DiscountController(
         }
     }
 
-    @GetMapping("/list-available")
+    @GetMapping("/available", "/list-available")
     @PreAuthorize("hasAuthority('DISCOUNT_VIEW')")
     fun listAvailable(
         @RequestParam(required = false) outletId: Long?,
