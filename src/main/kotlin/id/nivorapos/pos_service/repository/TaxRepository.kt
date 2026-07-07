@@ -7,4 +7,5 @@ import org.springframework.stereotype.Repository
 @Repository
 interface TaxRepository : JpaRepository<Tax, Long> {
     fun findByMerchantId(merchantId: Long): List<Tax>
+    fun findByMerchantIdAndIsDefaultTrue(merchantId: Long): Tax?
 }

@@ -50,10 +50,17 @@ class TransactionService(
         page: Int,
         size: Int,
         startDate: LocalDateTime?,
-        endDate: LocalDateTime?
+        endDate: LocalDateTime?,
+        sortBy: String? = null,
+        sortType: String? = null
     ): PagedResponse<TransactionListResponse> {
         val merchantId = SecurityUtils.getMerchantIdFromContext()
-        val pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdDate"))
+        val sortProperty = when (sortBy) {
+            "totalAmount", "status", "trxId" -> sortBy
+            else -> "createdDate"
+        }
+        val sortDirection = if (sortType?.uppercase() == "ASC") Sort.Direction.ASC else Sort.Direction.DESC
+        val pageable = PageRequest.of(page, size, Sort.by(sortDirection, sortProperty))
 
         val start = startDate ?: LocalDateTime.of(2000, 1, 1, 0, 0)
         val end = endDate ?: LocalDateTime.now().plusDays(1)
@@ -119,13 +126,14 @@ class TransactionService(
             merchantId = merchantId,
             transactionTotal = prelimSubTotal,
             outletId = request.outletId,
-            items = discountItems
+            items = discountItems,
+            discountAmount = discountAmount
         )
 
         // Pre-fetch all per-item entities once to avoid N+1 in compute/validate and item save
         val taxIds = request.items.asSequence().mapNotNull { it.taxId }.toSet()
         val variantIds = request.items.asSequence().mapNotNull { it.variantId }.toSet()
-        val modifierIds = request.items.asSequence().flatMap { it.modifierIds.asSequence() }.toSet()
+        val modifierIds = request.items.asSequence().flatMap { it.effectiveModifierIds.asSequence() }.toSet()
         val taxesById = if (taxIds.isEmpty()) emptyMap()
             else taxRepository.findAllById(taxIds).associateBy { it.id }
         val productsById = if (productIds.isEmpty()) emptyMap()
@@ -206,7 +214,7 @@ class TransactionService(
         }
 
         // Save items
-        val pendingModifiers = ArrayList<TransactionItemModifier>(request.items.sumOf { it.modifierIds.size })
+        val pendingModifiers = ArrayList<TransactionItemModifier>(request.items.sumOf { it.effectiveModifierIds.size })
         request.items.forEach { itemReq ->
             val product = productsById[itemReq.productId]
             val tax = itemReq.taxId?.let { taxesById[it] }
@@ -219,7 +227,7 @@ class TransactionService(
             validateVariantSelection(itemReq.productId, itemReq.variantId)
 
             // Resolve modifiers
-            val selectedModifiers = itemReq.modifierIds.mapNotNull { modifiersById[it] }
+            val selectedModifiers = itemReq.effectiveModifierIds.mapNotNull { modifiersById[it] }
             validateModifierSelection(itemReq.productId, selectedModifiers.map { it.id })
 
             val variantAdditionalPrice = variant?.additionalPrice ?: BigDecimal.ZERO
