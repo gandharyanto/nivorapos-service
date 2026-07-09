@@ -559,6 +559,12 @@ class TransactionService(
 
         // Compute service charge from DB, using the configured source/basis
         val netAfterDiscount = (calculatedSubTotal - discountAmount - promoAmount).max(BigDecimal.ZERO)
+        val clientNetAmount = parseBD(request.netAmount)
+        log.debug("[VALIDATE] netAmount: calculated=$netAfterDiscount client=$clientNetAmount")
+        if (clientNetAmount.subtract(netAfterDiscount).abs() > tolerance) {
+            log.warn("[VALIDATE] FAIL netAmount: expected=$netAfterDiscount got=$clientNetAmount")
+            return Pair("netAmount mismatch: expected $netAfterDiscount, got $clientNetAmount", null)
+        }
         val expectedServiceCharge = if (paymentSetting?.isServiceCharge == true) {
             when {
                 paymentSetting.serviceChargeAmount > BigDecimal.ZERO ->
