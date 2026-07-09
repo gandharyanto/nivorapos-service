@@ -131,7 +131,7 @@ class TransactionService(
         )
 
         // Pre-fetch all per-item entities once to avoid N+1 in compute/validate and item save
-        val taxIds = request.items.asSequence().mapNotNull { it.taxId }.toSet()
+        val taxIds = request.items.asSequence().mapNotNull { it.effectiveTaxId }.toSet()
         val variantIds = request.items.asSequence().mapNotNull { it.variantId }.toSet()
         val modifierIds = request.items.asSequence().flatMap { it.effectiveModifierIds.asSequence() }.toSet()
         val taxesById = if (taxIds.isEmpty()) emptyMap()
@@ -217,7 +217,7 @@ class TransactionService(
         val pendingModifiers = ArrayList<TransactionItemModifier>(request.items.sumOf { it.effectiveModifierIds.size })
         request.items.forEach { itemReq ->
             val product = productsById[itemReq.productId]
-            val tax = itemReq.taxId?.let { taxesById[it] }
+            val tax = itemReq.effectiveTaxId?.let { taxesById[it] }
             val itemPrice = parseBD(itemReq.price)
             val totalPrice = itemPrice.multiply(BigDecimal(itemReq.qty))
             val snapshot = if (product != null) objectMapper.writeValueAsString(product) else null
@@ -245,10 +245,10 @@ class TransactionService(
                 variantAdditionalPrice = variantAdditionalPrice,
                 modifiersAdditionalPrice = modifiersAdditionalPrice,
                 productSnapshot = snapshot,
-                taxId = itemReq.taxId,
+                taxId = itemReq.effectiveTaxId,
                 taxName = tax?.name,
                 taxPercentage = tax?.percentage ?: BigDecimal.ZERO,
-                taxAmount = parseBD(itemReq.taxAmount),
+                taxAmount = parseBD(itemReq.effectiveTaxAmount),
                 createdBy = username,
                 createdDate = now,
                 modifiedBy = username,
@@ -514,9 +514,10 @@ class TransactionService(
             val itemTotalPrice = itemPrice.multiply(BigDecimal(itemReq.qty))
             calculatedSubTotal = calculatedSubTotal.add(itemTotalPrice)
 
-            val clientTaxAmount = parseBD(itemReq.taxAmount)
-            if (itemReq.taxId != null) {
-                val tax = taxesById[itemReq.taxId] ?: taxRepository.findById(itemReq.taxId).orElse(null)
+            val clientTaxAmount = parseBD(itemReq.effectiveTaxAmount)
+            val effectiveTaxId = itemReq.effectiveTaxId
+            if (effectiveTaxId != null) {
+                val tax = taxesById[effectiveTaxId] ?: taxRepository.findById(effectiveTaxId).orElse(null)
                 if (tax != null && tax.percentage > BigDecimal.ZERO) {
                     val expectedTaxAmount = if (isPriceIncludeTax) {
                         itemTotalPrice.multiply(tax.percentage)
@@ -535,7 +536,7 @@ class TransactionService(
                     }
                     calculatedTotalTax = calculatedTotalTax.add(expectedTaxAmount)
                 } else {
-                    log.debug("[VALIDATE] item productId=${itemReq.productId} no tax (taxId=${itemReq.taxId} pct=${tax?.percentage})")
+                    log.debug("[VALIDATE] item productId=${itemReq.productId} no tax (taxId=$effectiveTaxId pct=${tax?.percentage})")
                 }
             } else {
                 log.debug("[VALIDATE] item productId=${itemReq.productId} no taxId, using clientTaxAmount=$clientTaxAmount")
