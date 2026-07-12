@@ -232,23 +232,27 @@ class PromotionService(
         transactionTotal: BigDecimal,
         outletId: Long?,
         items: List<DiscountValidateItemRequest>,
-        discountAmount: BigDecimal = BigDecimal.ZERO
+        discountAmount: BigDecimal = BigDecimal.ZERO,
+        selectedPromotionIds: List<Long> = emptyList()
     ): Pair<BigDecimal, List<AppliedPromotion>> {
         val now = LocalDateTime.now()
         val today = now.dayOfWeek
 
-        // Urutan mirror mobile PromotionOrchestrator.evaluateAll(): tier BUY_X_GET_Y+FREE
-        // dievaluasi lebih dulu, lalu priority ascending, tie-break by id ascending.
+        // Tidak auto-discover semua promosi aktif — hanya validasi & hitung ulang promosi
+        // yang sudah dipilih/diterapkan mobile FE (appliedPromotionIds). Urutan tetap mirror
+        // mobile PromotionOrchestrator.evaluateAll(): tier BUY_X_GET_Y+FREE dievaluasi lebih
+        // dulu, lalu priority ascending, tie-break by id ascending.
+        val selectedIdSet = selectedPromotionIds.toSet()
         val promotions = promotionRepository
             .findByMerchantIdAndDeletedDateIsNullOrderByPriorityAsc(merchantId)
-            .filter { it.isActive }
+            .filter { it.isActive && it.id in selectedIdSet }
             .sortedWith(
                 compareBy<Promotion> { if (it.promoType == "BUY_X_GET_Y" && it.rewardType == "FREE") 0 else 1 }
                     .thenBy { it.priority }
                     .thenBy { it.id }
             )
 
-        log.debug("[PROMO] autoApply merchantId=$merchantId transactionTotal=$transactionTotal discountAmount=$discountAmount candidates=${promotions.map { it.id }}")
+        log.debug("[PROMO] validating selectedPromotionIds=$selectedPromotionIds merchantId=$merchantId transactionTotal=$transactionTotal discountAmount=$discountAmount candidates=${promotions.map { it.id }}")
 
         val applied = mutableListOf<AppliedPromotion>()
         var totalPromo = BigDecimal.ZERO

@@ -123,13 +123,14 @@ class TransactionService(
             items = discountItems
         )
 
-        // Auto-apply promotions
+        // Validasi & hitung ulang promosi yang dipilih mobile FE (bukan auto-discover semua yang eligible)
         val (promoAmount, appliedPromotions) = promotionService.autoApply(
             merchantId = merchantId,
             transactionTotal = prelimSubTotal,
             outletId = request.outletId,
             items = discountItems,
-            discountAmount = discountAmount
+            discountAmount = discountAmount,
+            selectedPromotionIds = request.appliedPromotionIds
         )
         log.debug(
             "[CALC] discount=${appliedDiscount?.let { "${it.id}:${it.name}" }} discountAmount=$discountAmount " +
