@@ -3,21 +3,14 @@
     <!-- Honor Spring Boot's logging.* properties (level, file path, etc.) -->
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
 
-    <springProperty scope="context" name="springAppName" source="spring.application.name" defaultValue="pos-service"/>
-
-    <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-            <includeMdc>true</includeMdc>
-            <includeContext>false</includeContext>
-            <customFields>{"service_name":"${springAppName}","log_format":"json"}</customFields>
-            <fieldNames>
-                <timestamp>timestamp</timestamp>
-                <level>level</level>
-                <logger>logger</logger>
-                <thread>thread</thread>
-                <message>message</message>
-                <stackTrace>stack_trace</stackTrace>
-            </fieldNames>
+    <!--
+        Plain-text console output for local tracing: JSON was hard to read/grep
+        directly. Correlation fields (request_id, merchant_id, user_name) still
+        come through inline via MDC since RequestResponseLoggingFilter sets them.
+    -->
+    <appender name="TEXT_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - reqId=%X{request_id} merchant=%X{merchant_id} user=%X{user_name} :: %msg%n%ex</pattern>
         </encoder>
     </appender>
 
@@ -27,7 +20,7 @@
         log drivers from blocking request threads.
     -->
     <appender name="ASYNC_CONSOLE" class="ch.qos.logback.classic.AsyncAppender">
-        <appender-ref ref="JSON_CONSOLE"/>
+        <appender-ref ref="TEXT_CONSOLE"/>
         <queueSize>4096</queueSize>
         <discardingThreshold>0</discardingThreshold>
         <neverBlock>true</neverBlock>
