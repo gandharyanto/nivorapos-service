@@ -39,6 +39,29 @@ class TransactionServiceTaxBasisTest {
     }
 
     @Test
+    fun `adjusted unit price divides totalPrice by qty for discount-promo basis`() {
+        // Caffe Latte line: totalPrice 43000 (price 32000 + Medium 5000 + Caramel 6000), qty 1
+        // -> discount/promo engines must qualify against 43000, not the raw 32000 base price.
+        val unitPrice = computeAdjustedUnitPrice(totalPrice = BigDecimal("43000.00"), qty = 1)
+
+        assertEquals(BigDecimal("43000.00"), unitPrice)
+    }
+
+    @Test
+    fun `adjusted unit price divides evenly across multiple quantity`() {
+        val unitPrice = computeAdjustedUnitPrice(totalPrice = BigDecimal("30000.00"), qty = 3)
+
+        assertEquals(BigDecimal("10000.00"), unitPrice)
+    }
+
+    @Test
+    fun `adjusted unit price is zero when qty is zero`() {
+        val unitPrice = computeAdjustedUnitPrice(totalPrice = BigDecimal("10000.00"), qty = 0)
+
+        assertEquals(BigDecimal.ZERO, unitPrice)
+    }
+
+    @Test
     fun `taxAmount computed on real deploy log payload matches mobile's expected 2057`() {
         // Regression test for log.txt 400 error: server previously computed 3520.00
         // (price*qty, ignoring adjustments/promotions) instead of mobile's 2057.00.

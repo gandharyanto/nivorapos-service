@@ -3,6 +3,7 @@ package id.nivorapos.pos_service.service
 import tools.jackson.databind.ObjectMapper
 import id.nivorapos.pos_service.dto.request.DiscountValidateItemRequest
 import id.nivorapos.pos_service.dto.request.InitiatePaymentRequest
+import id.nivorapos.pos_service.dto.request.TransactionItemRequest
 import id.nivorapos.pos_service.dto.request.TransactionRequest
 import id.nivorapos.pos_service.dto.request.TransactionUpdateRequest
 import id.nivorapos.pos_service.dto.response.*
@@ -100,7 +101,7 @@ class TransactionService(
             DiscountValidateItemRequest(
                 productId = itemReq.productId,
                 qty = itemReq.qty,
-                price = parseBD(itemReq.price),
+                price = computeAdjustedUnitPrice(resolveItemTotalPrice(itemReq), itemReq.qty),
                 categoryIds = categoryIdsByProduct[itemReq.productId].orEmpty()
             )
         }
@@ -510,11 +511,7 @@ class TransactionService(
         var calculatedTotalTax = BigDecimal.ZERO
 
         for (itemReq in request.items) {
-            val itemPrice = parseBD(itemReq.price)
-            // Prefer mobile's adjusted totalPrice (price + variant/modifier adjustments);
-            // fall back to price*qty when absent (no adjustments sent).
-            val itemTotalPrice = itemReq.totalPrice?.let { parseBD(it) }
-                ?: itemPrice.multiply(BigDecimal(itemReq.qty))
+            val itemTotalPrice = resolveItemTotalPrice(itemReq)
             calculatedSubTotal = calculatedSubTotal.add(itemTotalPrice)
 
             val itemPromotionAmount = itemReq.promotions.fold(BigDecimal.ZERO) { acc, promo ->
@@ -718,6 +715,15 @@ class TransactionService(
         return try { BigDecimal(value ?: "0") } catch (e: Exception) { BigDecimal.ZERO }
     }
 
+    /**
+     * Adjusted line total for an item: prefers mobile's [TransactionItemRequest.totalPrice]
+     * (price + variant/modifier adjustments); falls back to price*qty when absent.
+     */
+    private fun resolveItemTotalPrice(itemReq: TransactionItemRequest): BigDecimal {
+        return itemReq.totalPrice?.let { parseBD(it) }
+            ?: parseBD(itemReq.price).multiply(BigDecimal(itemReq.qty))
+    }
+
     private fun reduceStockForTransaction(transaction: Transaction, username: String, now: LocalDateTime) {
         if (hasActiveStockReduction(transaction.id)) {
             return
@@ -865,4 +871,14 @@ class TransactionService(
  */
 internal fun computeItemTaxableBase(totalPrice: BigDecimal, promotionAmount: BigDecimal): BigDecimal {
     return totalPrice.subtract(promotionAmount).max(BigDecimal.ZERO)
+}
+
+/**
+ * Per-unit price used by discount/promotion qualification: the adjusted line total
+ * (price + variant/modifier adjustments) spread evenly across qty, so discount/promo
+ * engines qualify against the same basis mobile and tax validation use.
+ */
+internal fun computeAdjustedUnitPrice(totalPrice: BigDecimal, qty: Int): BigDecimal {
+    if (qty <= 0) return BigDecimal.ZERO
+    return totalPrice.divide(BigDecimal(qty), 2, RoundingMode.HALF_UP)
 }
