@@ -7,6 +7,7 @@ import id.nivorapos.pos_service.dto.response.*
 import id.nivorapos.pos_service.entity.*
 import id.nivorapos.pos_service.repository.*
 import id.nivorapos.pos_service.security.SecurityUtils
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
@@ -25,6 +26,7 @@ class DiscountService(
     private val productCategoryRepository: ProductCategoryRepository,
     private val psgsCredentialService: PsgsCredentialService
 ) {
+    private val log = LoggerFactory.getLogger(DiscountService::class.java)
 
     fun list(): ApiResponse<List<DiscountResponse>> {
         val merchantId = SecurityUtils.getMerchantIdFromContext()
@@ -236,7 +238,10 @@ class DiscountService(
         customerId: Long?,
         items: List<DiscountValidateItemRequest>
     ): Pair<BigDecimal, Discount?> {
-        if (discountId == null && discountCode == null) return Pair(BigDecimal.ZERO, null)
+        if (discountId == null && discountCode == null) {
+            log.debug("[DISCOUNT] no discountId/discountCode in request, skipping discount resolution")
+            return Pair(BigDecimal.ZERO, null)
+        }
 
         val discount = when {
             discountCode != null ->
@@ -246,12 +251,19 @@ class DiscountService(
                 discountRepository.findByIdAndMerchantIdAndDeletedDateIsNull(discountId, merchantId)
                     .orElse(null)
             else -> null
-        } ?: return Pair(BigDecimal.ZERO, null)
+        } ?: run {
+            log.debug("[DISCOUNT] discountId=$discountId discountCode=$discountCode not found for merchant $merchantId")
+            return Pair(BigDecimal.ZERO, null)
+        }
 
         val (eligible) = checkEligibility(discount, transactionTotal, outletId, customerId)
-        if (!eligible) return Pair(BigDecimal.ZERO, null)
+        if (!eligible) {
+            log.debug("[DISCOUNT] ${discount.name} (id=${discount.id}) not eligible: transactionTotal=$transactionTotal minPurchase=${discount.minPurchase}")
+            return Pair(BigDecimal.ZERO, null)
+        }
 
         val amount = computeDiscountAmount(discount, transactionTotal, items)
+        log.debug("[DISCOUNT] applied ${discount.name} (id=${discount.id}) scope=${discount.scope} valueType=${discount.valueType} value=${discount.value} -> amount=$amount")
         return Pair(amount, discount)
     }
 

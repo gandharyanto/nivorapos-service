@@ -6,6 +6,7 @@ import id.nivorapos.pos_service.dto.response.*
 import id.nivorapos.pos_service.entity.*
 import id.nivorapos.pos_service.repository.*
 import id.nivorapos.pos_service.security.SecurityUtils
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
@@ -24,6 +25,7 @@ class PromotionService(
     private val promotionOutletRepository: PromotionOutletRepository,
     private val psgsCredentialService: PsgsCredentialService
 ) {
+    private val log = LoggerFactory.getLogger(PromotionService::class.java)
 
     fun list(): ApiResponse<List<PromotionResponse>> {
         val merchantId = SecurityUtils.getMerchantIdFromContext()
@@ -246,29 +248,45 @@ class PromotionService(
                     .thenBy { it.id }
             )
 
+        log.debug("[PROMO] autoApply merchantId=$merchantId transactionTotal=$transactionTotal discountAmount=$discountAmount candidates=${promotions.map { it.id }}")
+
         val applied = mutableListOf<AppliedPromotion>()
         var totalPromo = BigDecimal.ZERO
         var hasNonCombine = false
 
         for (promo in promotions) {
-            if (hasNonCombine) break
+            if (hasNonCombine) {
+                log.debug("[PROMO] ${promo.name} (id=${promo.id}) skipped: a non-combinable promo already applied")
+                break
+            }
 
             // Cek kondisi eligibility
-            if (!isEligible(promo, transactionTotal, outletId, now, today, items)) continue
+            if (!isEligible(promo, transactionTotal, outletId, now, today, items)) {
+                log.debug("[PROMO] ${promo.name} (id=${promo.id}) not eligible: type=${promo.promoType} minPurchase=${promo.minPurchase} buyQty=${promo.buyQty}")
+                continue
+            }
 
             // Jika canCombine=false dan sudah ada yang diterapkan, skip
-            if (!promo.canCombine && applied.isNotEmpty()) continue
+            if (!promo.canCombine && applied.isNotEmpty()) {
+                log.debug("[PROMO] ${promo.name} (id=${promo.id}) skipped: canCombine=false and other promos already applied")
+                continue
+            }
 
             val effectiveTotal = transactionTotal.subtract(discountAmount).subtract(totalPromo).max(BigDecimal.ZERO)
             val amount = computePromoAmount(promo, effectiveTotal, items)
-            if (amount <= BigDecimal.ZERO) continue
+            if (amount <= BigDecimal.ZERO) {
+                log.debug("[PROMO] ${promo.name} (id=${promo.id}) computed amount=$amount, skipped (not positive)")
+                continue
+            }
 
+            log.debug("[PROMO] applied ${promo.name} (id=${promo.id}) type=${promo.promoType} valueType=${promo.valueType} effectiveTotal=$effectiveTotal -> amount=$amount")
             applied.add(AppliedPromotion(promo.id, promo.name, amount))
             totalPromo = totalPromo.add(amount)
 
             if (!promo.canCombine) hasNonCombine = true
         }
 
+        log.debug("[PROMO] autoApply result: applied=${applied.map { "${it.promotionId}:${it.promoAmount}" }} totalPromo=$totalPromo")
         return Pair(totalPromo.setScale(2, RoundingMode.HALF_UP), applied)
     }
 

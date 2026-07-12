@@ -110,6 +110,7 @@ class TransactionService(
         val prelimSubTotal = discountItems.fold(BigDecimal.ZERO) { acc, item ->
             acc.add(item.price.multiply(BigDecimal(item.qty)))
         }
+        log.debug("[CALC] merchantId=$merchantId requestDiscountId=${request.discountId} requestDiscountCode=${request.discountCode} prelimSubTotal=$prelimSubTotal")
 
         // Resolve discount (validate + hitung amount, belum catat usage)
         val (discountAmount, appliedDiscount) = discountService.resolveForTransaction(
@@ -123,12 +124,17 @@ class TransactionService(
         )
 
         // Auto-apply promotions
-        val (promoAmount, _) = promotionService.autoApply(
+        val (promoAmount, appliedPromotions) = promotionService.autoApply(
             merchantId = merchantId,
             transactionTotal = prelimSubTotal,
             outletId = request.outletId,
             items = discountItems,
             discountAmount = discountAmount
+        )
+        log.debug(
+            "[CALC] discount=${appliedDiscount?.let { "${it.id}:${it.name}" }} discountAmount=$discountAmount " +
+                "promotions=${appliedPromotions.map { "${it.promotionId}:${it.promotionName}=${it.promoAmount}" }} promoAmount=$promoAmount " +
+                "totalDeduction=${discountAmount.add(promoAmount)}"
         )
 
         // Pre-fetch all per-item entities once to avoid N+1 in compute/validate and item save
