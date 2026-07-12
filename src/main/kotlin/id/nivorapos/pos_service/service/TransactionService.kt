@@ -511,8 +511,16 @@ class TransactionService(
 
         for (itemReq in request.items) {
             val itemPrice = parseBD(itemReq.price)
-            val itemTotalPrice = itemPrice.multiply(BigDecimal(itemReq.qty))
+            // Prefer mobile's adjusted totalPrice (price + variant/modifier adjustments);
+            // fall back to price*qty when absent (no adjustments sent).
+            val itemTotalPrice = itemReq.totalPrice?.let { parseBD(it) }
+                ?: itemPrice.multiply(BigDecimal(itemReq.qty))
             calculatedSubTotal = calculatedSubTotal.add(itemTotalPrice)
+
+            val itemPromotionAmount = itemReq.promotions.fold(BigDecimal.ZERO) { acc, promo ->
+                acc.add(parseBD(promo.amt ?: "0"))
+            }
+            val itemTaxableBase = computeItemTaxableBase(itemTotalPrice, itemPromotionAmount)
 
             val clientTaxAmount = parseBD(itemReq.effectiveTaxAmount)
             val effectiveTaxId = itemReq.effectiveTaxId
@@ -520,13 +528,13 @@ class TransactionService(
                 val tax = taxesById[effectiveTaxId] ?: taxRepository.findById(effectiveTaxId).orElse(null)
                 if (tax != null && tax.percentage > BigDecimal.ZERO) {
                     val expectedTaxAmount = if (isPriceIncludeTax) {
-                        itemTotalPrice.multiply(tax.percentage)
+                        itemTaxableBase.multiply(tax.percentage)
                             .divide(hundred.add(tax.percentage), 2, RoundingMode.HALF_UP)
                     } else {
-                        itemTotalPrice.multiply(tax.percentage)
+                        itemTaxableBase.multiply(tax.percentage)
                             .divide(hundred, 2, RoundingMode.HALF_UP)
                     }
-                    log.debug("[VALIDATE] item productId=${itemReq.productId} qty=${itemReq.qty} price=${itemReq.price} totalPrice=$itemTotalPrice taxPct=${tax.percentage} expectedTax=$expectedTaxAmount clientTax=$clientTaxAmount")
+                    log.debug("[VALIDATE] item productId=${itemReq.productId} qty=${itemReq.qty} price=${itemReq.price} totalPrice=$itemTotalPrice promotionAmount=$itemPromotionAmount taxableBase=$itemTaxableBase taxPct=${tax.percentage} expectedTax=$expectedTaxAmount clientTax=$clientTaxAmount")
                     if (clientTaxAmount.subtract(expectedTaxAmount).abs() > tolerance) {
                         log.warn("[VALIDATE] FAIL taxAmount productId=${itemReq.productId}: expected=$expectedTaxAmount got=$clientTaxAmount")
                         return Pair(
@@ -849,4 +857,12 @@ class TransactionService(
         private const val STOCK_MOVEMENT_TRANSACTION = "TRANSACTION"
         private const val STOCK_MOVEMENT_TRANSACTION_CANCELLED = "TRANSACTION_CANCELLED"
     }
+}
+
+/**
+ * Per-item taxable base: adjusted line total (price + variant/modifier adjustments) minus
+ * that item's own promotions, matching mobile's after-discount-per-product tax model.
+ */
+internal fun computeItemTaxableBase(totalPrice: BigDecimal, promotionAmount: BigDecimal): BigDecimal {
+    return totalPrice.subtract(promotionAmount).max(BigDecimal.ZERO)
 }
