@@ -142,9 +142,14 @@ class PaymentSettingService(
                     "serviceChargePercentage harus antara 0.01 dan 100"
                 }
             }
-            val validSources = listOf("BEFORE_TAX", "AFTER_TAX", "DPP", "AFTER_DISCOUNT")
+            val validSources = listOf(
+                "BEFORE_DISCOUNT_BEFORE_TAX",
+                "AFTER_DISCOUNT_BEFORE_TAX",
+                "BEFORE_DISCOUNT_AFTER_TAX",
+                "AFTER_DISCOUNT_AFTER_TAX"
+            )
             require(request.serviceChargeSource != null && request.serviceChargeSource.uppercase() in validSources) {
-                "serviceChargeSource wajib diisi dengan BEFORE_TAX, AFTER_TAX, DPP, atau AFTER_DISCOUNT"
+                "serviceChargeSource wajib diisi dengan BEFORE_DISCOUNT_BEFORE_TAX, AFTER_DISCOUNT_BEFORE_TAX, BEFORE_DISCOUNT_AFTER_TAX, atau AFTER_DISCOUNT_AFTER_TAX"
             }
         }
         val isRounding = request.isRounding == true

@@ -571,18 +571,20 @@ class TransactionService(
                 paymentSetting.serviceChargeAmount > BigDecimal.ZERO ->
                     paymentSetting.serviceChargeAmount
                 paymentSetting.serviceChargePercentage > BigDecimal.ZERO -> {
+                    // Tax baseline is always after-discount per product; source only decides
+                    // whether the service charge base is pre/post discount and pre/post tax.
                     val scBase = when (paymentSetting.serviceChargeSource?.uppercase()) {
-                        "AFTER_DISCOUNT" -> netAfterDiscount
-                        "BEFORE_TAX" -> calculatedSubTotal
-                        "DPP" -> if (isPriceIncludeTax)
-                            (calculatedSubTotal - calculatedTotalTax).max(BigDecimal.ZERO)
-                        else
-                            calculatedSubTotal
-                        "AFTER_TAX" -> if (isPriceIncludeTax)
+                        "BEFORE_DISCOUNT_BEFORE_TAX" -> calculatedSubTotal
+                        "AFTER_DISCOUNT_BEFORE_TAX" -> netAfterDiscount
+                        "BEFORE_DISCOUNT_AFTER_TAX" -> if (isPriceIncludeTax)
                             calculatedSubTotal
                         else
                             calculatedSubTotal.add(calculatedTotalTax)
-                        else -> calculatedSubTotal  // legacy fallback (no source set)
+                        "AFTER_DISCOUNT_AFTER_TAX" -> if (isPriceIncludeTax)
+                            netAfterDiscount
+                        else
+                            netAfterDiscount.add(calculatedTotalTax)
+                        else -> netAfterDiscount  // legacy fallback: recommended default (no source set)
                     }
                     scBase.multiply(paymentSetting.serviceChargePercentage)
                         .divide(hundred, 2, RoundingMode.HALF_UP)

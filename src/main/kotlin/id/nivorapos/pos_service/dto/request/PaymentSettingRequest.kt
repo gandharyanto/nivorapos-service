@@ -10,7 +10,7 @@ data class PaymentSettingRequest(
     val isServiceCharge: Boolean? = null,
     val serviceChargePercentage: BigDecimal? = null,
     val serviceChargeAmount: BigDecimal? = null,
-    /** BEFORE_TAX | AFTER_TAX | DPP | AFTER_DISCOUNT */
+    /** BEFORE_DISCOUNT_BEFORE_TAX | AFTER_DISCOUNT_BEFORE_TAX | BEFORE_DISCOUNT_AFTER_TAX | AFTER_DISCOUNT_AFTER_TAX */
     val serviceChargeSource: String? = null,
     /** Mengedit tax default merchant (Tax.isDefault=true), bukan kolom di PaymentSetting sendiri. */
     val isTax: Boolean? = null,
