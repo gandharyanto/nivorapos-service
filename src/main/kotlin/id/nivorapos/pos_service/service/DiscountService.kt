@@ -474,7 +474,8 @@ class DiscountService(
 
     private fun isOutletEligible(discount: Discount, outletId: Long?): Boolean {
         if (discount.visibility == "ALL_OUTLET") return true
-        if (outletId == null) return false
+        // outletId tidak dikirim (mis. mobile belum mengirim outletId) -> anggap berlaku di semua outlet.
+        if (outletId == null) return true
         return discountOutletRepository.existsByDiscountIdAndOutletId(discount.id, outletId)
     }
 

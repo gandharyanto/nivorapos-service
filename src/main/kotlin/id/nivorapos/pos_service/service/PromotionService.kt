@@ -341,7 +341,8 @@ class PromotionService(
 
     private fun isOutletEligible(promo: Promotion, outletId: Long?): Boolean {
         if (promo.visibility == "ALL_OUTLET") return true
-        if (outletId == null) return false
+        // outletId tidak dikirim (mis. mobile belum mengirim outletId) -> anggap berlaku di semua outlet.
+        if (outletId == null) return true
         return promotionOutletRepository.existsByPromotionIdAndOutletId(promo.id, outletId)
     }
 
