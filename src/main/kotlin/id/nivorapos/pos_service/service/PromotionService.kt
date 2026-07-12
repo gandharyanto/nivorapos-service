@@ -264,9 +264,8 @@ class PromotionService(
                 break
             }
 
-            // Cek kondisi eligibility
+            // Cek kondisi eligibility (isEligible melog alasan spesifik saat reject)
             if (!isEligible(promo, transactionTotal, outletId, now, today, items)) {
-                log.debug("[PROMO] ${promo.name} (id=${promo.id}) not eligible: type=${promo.promoType} minPurchase=${promo.minPurchase} buyQty=${promo.buyQty}")
                 continue
             }
 
@@ -304,20 +303,37 @@ class PromotionService(
         today: DayOfWeek,
         items: List<DiscountValidateItemRequest>
     ): Boolean {
-        if (promo.startDate != null && now.isBefore(promo.startDate)) return false
-        if (promo.endDate != null && now.isAfter(promo.endDate)) return false
+        fun reject(reason: String): Boolean {
+            log.debug("[PROMO] ${promo.name} (id=${promo.id}) rejected: $reason")
+            return false
+        }
+
+        if (promo.startDate != null && now.isBefore(promo.startDate)) {
+            return reject("startDate=${promo.startDate} is after now=$now")
+        }
+        if (promo.endDate != null && now.isAfter(promo.endDate)) {
+            return reject("endDate=${promo.endDate} is before now=$now")
+        }
         if (promo.validDays != null) {
             val days = promo.validDays!!.split(",").map { it.trim().uppercase() }
-            if (today.name !in days) return false
+            if (today.name !in days) return reject("today=${today.name} not in validDays=$days")
         }
-        if (promo.channel !in listOf("POS", "BOTH")) return false
-        if (!isOutletEligible(promo, outletId)) return false
-        if (transactionTotal < promo.minPurchase) return false
+        if (promo.channel !in listOf("POS", "BOTH")) {
+            return reject("channel=${promo.channel} does not allow POS")
+        }
+        if (!isOutletEligible(promo, outletId)) {
+            return reject("outlet not eligible: visibility=${promo.visibility} requestOutletId=$outletId")
+        }
+        if (transactionTotal < promo.minPurchase) {
+            return reject("transactionTotal=$transactionTotal < minPurchase=${promo.minPurchase}")
+        }
 
         if (promo.promoType == "BUY_X_GET_Y") {
             val buyQty = promo.buyQty ?: 1
             val totalBuyQty = countEligibleBuyQty(promo, items)
-            if (totalBuyQty < buyQty) return false
+            if (totalBuyQty < buyQty) {
+                return reject("totalBuyQty=$totalBuyQty < buyQty=$buyQty (buyScope=${promo.buyScope})")
+            }
         }
 
         return true

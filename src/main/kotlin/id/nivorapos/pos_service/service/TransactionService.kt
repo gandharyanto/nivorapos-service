@@ -92,6 +92,17 @@ class TransactionService(
         val username = SecurityUtils.getUsernameFromContext()
         val now = LocalDateTime.now()
 
+        log.debug(
+            "[REQUEST] mobile request: paymentMethod=${request.paymentMethod} priceIncludeTax=${request.priceIncludeTax} " +
+                "outletId=${request.outletId} customerId=${request.customerId} " +
+                "subTotal(gross)=${request.subTotal} netAmount=${request.netAmount} totalAmount=${request.totalAmount} " +
+                "totalTax=${request.totalTax} totalServiceCharge=${request.totalServiceCharge} totalRounding=${request.totalRounding} " +
+                "discountId=${request.discountId} discountCode=${request.discountCode} appliedPromotionIds=${request.appliedPromotionIds} " +
+                "items=${request.items.map { "productId=${it.productId} qty=${it.qty} price=${it.price} totalPrice=${it.totalPrice} " +
+                    "variantId=${it.variantId} modifierIds=${it.effectiveModifierIds} promotions=${it.promotions.map { p -> "${p.id}:${p.amt}" }} " +
+                    "taxes=${it.taxes.map { t -> "${t.id}:${t.amt}" }}" }}"
+        )
+
         // Build discountItems early — needed for discount/promo resolution and SC basis
         val productIds = request.items.map { it.productId }.distinct()
         val categoryIdsByProduct = if (productIds.isEmpty()) emptyMap()
