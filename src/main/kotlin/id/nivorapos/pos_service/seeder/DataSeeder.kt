@@ -28,13 +28,24 @@ class DataSeeder(
     private val merchantPaymentMethodRepository: MerchantPaymentMethodRepository,
     private val paymentSettingRepository: PaymentSettingRepository,
     private val globalParameterRepository: GlobalParameterRepository,
-    private val psgsCredentialService: PsgsCredentialService
+    private val psgsCredentialService: PsgsCredentialService,
+    private val productVariantGroupRepository: ProductVariantGroupRepository,
+    private val productVariantRepository: ProductVariantRepository,
+    private val productModifierRepository: ProductModifierRepository,
+    private val discountRepository: DiscountRepository,
+    private val discountProductRepository: DiscountProductRepository,
+    private val discountCategoryRepository: DiscountCategoryRepository,
+    private val promotionRepository: PromotionRepository,
+    private val promotionBuyProductRepository: PromotionBuyProductRepository,
+    private val promotionBuyCategoryRepository: PromotionBuyCategoryRepository,
+    private val promotionRewardProductRepository: PromotionRewardProductRepository,
+    private val promotionRewardCategoryRepository: PromotionRewardCategoryRepository
 ) : ApplicationRunner {
 
     private val log = LoggerFactory.getLogger(DataSeeder::class.java)
     private val now = LocalDateTime.now()
     private val seederUser = "SEEDER"
-    private val seedMerchantId = 1L
+    private val seedMerchantId = 25L
 
     @Transactional
     override fun run(args: ApplicationArguments) {
@@ -55,6 +66,10 @@ class DataSeeder(
         seedProductCategories(products, categories)
         seedProductOutlets(products, outletIds)
         seedStock(products)
+        seedProductVariants(merchantId, products)
+        seedProductModifiers(products)
+        seedDiscounts(merchantId, products, categories)
+        seedPromotions(merchantId, products, categories)
         seedGlobalParameters()
 
         log.info("=== Data Seeder Completed ===")
@@ -465,6 +480,405 @@ class DataSeeder(
                 log.info("[SKIP] Stock for ${product.name} already exists")
             }
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Product Variants — satu variant group "Ukuran" (required) untuk produk minuman
+    // ─────────────────────────────────────────────────────────────
+    private fun seedProductVariants(merchantId: Long, products: List<Product>) {
+        if (productVariantGroupRepository.existsByMerchantId(merchantId)) {
+            log.info("[SKIP] ProductVariantGroup already exists for merchant $merchantId")
+            return
+        }
+        val group = productVariantGroupRepository.save(
+            ProductVariantGroup(
+                merchantId = merchantId,
+                name = "Ukuran",
+                isRequired = true,
+                displayOrder = 1,
+                isActive = true,
+                createdBy = seederUser,
+                createdDate = now
+            )
+        )
+        log.info("[SEED] ProductVariantGroup: ${group.name}")
+
+        data class VarData(val name: String, val extra: String, val isDefault: Boolean)
+        val variantData = listOf(
+            VarData("Small", "0", true),
+            VarData("Medium", "5000", false),
+            VarData("Large", "8000", false)
+        )
+
+        products.take(5).forEach { product ->
+            variantData.forEach { v ->
+                productVariantRepository.save(
+                    ProductVariant(
+                        productId = product.id,
+                        variantGroupId = group.id,
+                        name = v.name,
+                        additionalPrice = BigDecimal(v.extra),
+                        isActive = true,
+                        isStock = false,
+                        isDefault = v.isDefault,
+                        createdBy = seederUser,
+                        createdDate = now
+                    )
+                )
+                log.info("[SEED] ProductVariant: ${product.name} -> ${v.name}")
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Product Modifiers — extras non-required untuk produk minuman
+    // ─────────────────────────────────────────────────────────────
+    private fun seedProductModifiers(products: List<Product>) {
+        data class ModData(val name: String, val price: String, val isDefault: Boolean)
+        val modifierData = listOf(
+            ModData("Extra Shot", "5000", false),
+            ModData("Less Sugar", "0", true),
+            ModData("Susu Oat", "6000", false)
+        )
+
+        products.take(5).forEach { product ->
+            if (productModifierRepository.findByProductId(product.id).isNotEmpty()) {
+                log.info("[SKIP] ProductModifiers already exist for ${product.name}")
+                return@forEach
+            }
+            modifierData.forEach { m ->
+                productModifierRepository.save(
+                    ProductModifier(
+                        productId = product.id,
+                        name = m.name,
+                        additionalPrice = BigDecimal(m.price),
+                        isActive = true,
+                        isStock = false,
+                        isDefault = m.isDefault,
+                        createdBy = seederUser,
+                        createdDate = now
+                    )
+                )
+                log.info("[SEED] ProductModifier: ${product.name} -> ${m.name}")
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Discounts — semua kombinasi scope (ALL/PRODUCT/CATEGORY) x valueType (PERCENTAGE/AMOUNT)
+    // ─────────────────────────────────────────────────────────────
+    private fun seedDiscounts(merchantId: Long, products: List<Product>, categories: List<Category>) {
+        if (discountRepository.findByMerchantIdAndDeletedDateIsNull(merchantId).isNotEmpty()) {
+            log.info("[SKIP] Discounts already exist for merchant $merchantId")
+            return
+        }
+
+        // 1. scope=ALL, valueType=PERCENTAGE, tanpa kode (pilih dari daftar)
+        discountRepository.save(
+            Discount(
+                merchantId = merchantId,
+                name = "Diskon Merdeka 10%",
+                code = null,
+                valueType = "PERCENTAGE",
+                value = BigDecimal("10"),
+                maxDiscountAmount = BigDecimal("15000"),
+                minPurchase = BigDecimal.ZERO,
+                scope = "ALL",
+                channel = "POS",
+                visibility = "ALL_OUTLET",
+                isActive = true,
+                createdBy = seederUser,
+                createdDate = now
+            )
+        ).also { log.info("[SEED] Discount: ${it.name}") }
+
+        // 2. scope=ALL, valueType=AMOUNT, dengan kode
+        discountRepository.save(
+            Discount(
+                merchantId = merchantId,
+                name = "Diskon Member 50rb",
+                code = "MEMBER50K",
+                valueType = "AMOUNT",
+                value = BigDecimal("50000"),
+                minPurchase = BigDecimal("200000"),
+                scope = "ALL",
+                channel = "POS",
+                visibility = "ALL_OUTLET",
+                isActive = true,
+                createdBy = seederUser,
+                createdDate = now
+            )
+        ).also { log.info("[SEED] Discount: ${it.name}") }
+
+        // 3. scope=PRODUCT, valueType=PERCENTAGE
+        val discProduct = discountRepository.save(
+            Discount(
+                merchantId = merchantId,
+                name = "Diskon Kopi Susu 15%",
+                code = null,
+                valueType = "PERCENTAGE",
+                value = BigDecimal("15"),
+                maxDiscountAmount = BigDecimal("10000"),
+                minPurchase = BigDecimal.ZERO,
+                scope = "PRODUCT",
+                channel = "POS",
+                visibility = "ALL_OUTLET",
+                isActive = true,
+                createdBy = seederUser,
+                createdDate = now
+            )
+        )
+        products.getOrNull(0)?.let { product ->
+            discountProductRepository.save(DiscountProduct(discountId = discProduct.id, productId = product.id))
+            log.info("[SEED] DiscountProduct: ${discProduct.name} -> ${product.name}")
+        }
+        log.info("[SEED] Discount: ${discProduct.name}")
+
+        // 4. scope=CATEGORY, valueType=AMOUNT
+        val discCategory = discountRepository.save(
+            Discount(
+                merchantId = merchantId,
+                name = "Diskon Camilan 5rb",
+                code = null,
+                valueType = "AMOUNT",
+                value = BigDecimal("5000"),
+                minPurchase = BigDecimal.ZERO,
+                scope = "CATEGORY",
+                channel = "POS",
+                visibility = "ALL_OUTLET",
+                isActive = true,
+                createdBy = seederUser,
+                createdDate = now
+            )
+        )
+        categories.getOrNull(3)?.let { category ->
+            discountCategoryRepository.save(DiscountCategory(discountId = discCategory.id, categoryId = category.id))
+            log.info("[SEED] DiscountCategory: ${discCategory.name} -> ${category.name}")
+        }
+        log.info("[SEED] Discount: ${discCategory.name}")
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Promotions — semua kombinasi promo_type x buy/reward scope x reward_type
+    // ─────────────────────────────────────────────────────────────
+    private fun seedPromotions(merchantId: Long, products: List<Product>, categories: List<Category>) {
+        if (promotionRepository.findByMerchantIdAndDeletedDateIsNullOrderByPriorityAsc(merchantId).isNotEmpty()) {
+            log.info("[SKIP] Promotions already exist for merchant $merchantId")
+            return
+        }
+
+        // 1. DISCOUNT_BY_ORDER, valueType=PERCENTAGE, buyScope=ALL
+        promotionRepository.save(
+            Promotion(
+                merchantId = merchantId,
+                name = "Promo Order 10%",
+                promoType = "DISCOUNT_BY_ORDER",
+                priority = 1,
+                canCombine = true,
+                isActive = true,
+                value = BigDecimal("10"),
+                valueType = "PERCENTAGE",
+                maxDiscountAmount = BigDecimal("20000"),
+                buyScope = "ALL",
+                rewardScope = "ALL",
+                minPurchase = BigDecimal("30000"),
+                channel = "POS",
+                visibility = "ALL_OUTLET",
+                createdBy = seederUser,
+                createdDate = now
+            )
+        ).also { log.info("[SEED] Promotion: ${it.name}") }
+
+        // 2. DISCOUNT_BY_ORDER, valueType=AMOUNT, buyScope=ALL
+        promotionRepository.save(
+            Promotion(
+                merchantId = merchantId,
+                name = "Promo Order Potongan 15rb",
+                promoType = "DISCOUNT_BY_ORDER",
+                priority = 2,
+                canCombine = true,
+                isActive = true,
+                value = BigDecimal("15000"),
+                valueType = "AMOUNT",
+                buyScope = "ALL",
+                rewardScope = "ALL",
+                minPurchase = BigDecimal("50000"),
+                channel = "POS",
+                visibility = "ALL_OUTLET",
+                createdBy = seederUser,
+                createdDate = now
+            )
+        ).also { log.info("[SEED] Promotion: ${it.name}") }
+
+        // 3. DISCOUNT_BY_ITEM_SUBTOTAL, valueType=PERCENTAGE, buyScope=PRODUCT
+        val promoItemPct = promotionRepository.save(
+            Promotion(
+                merchantId = merchantId,
+                name = "Promo Subtotal Americano 20%",
+                promoType = "DISCOUNT_BY_ITEM_SUBTOTAL",
+                priority = 3,
+                canCombine = true,
+                isActive = true,
+                value = BigDecimal("20"),
+                valueType = "PERCENTAGE",
+                buyScope = "PRODUCT",
+                rewardScope = "PRODUCT",
+                minPurchase = BigDecimal.ZERO,
+                channel = "POS",
+                visibility = "ALL_OUTLET",
+                createdBy = seederUser,
+                createdDate = now
+            )
+        )
+        products.getOrNull(1)?.let { product ->
+            promotionBuyProductRepository.save(PromotionBuyProduct(promotionId = promoItemPct.id, productId = product.id))
+            log.info("[SEED] PromotionBuyProduct: ${promoItemPct.name} -> ${product.name}")
+        }
+        log.info("[SEED] Promotion: ${promoItemPct.name}")
+
+        // 4. DISCOUNT_BY_ITEM_SUBTOTAL, valueType=AMOUNT, buyScope=CATEGORY
+        val promoItemAmt = promotionRepository.save(
+            Promotion(
+                merchantId = merchantId,
+                name = "Promo Subtotal Camilan 3rb",
+                promoType = "DISCOUNT_BY_ITEM_SUBTOTAL",
+                priority = 4,
+                canCombine = true,
+                isActive = true,
+                value = BigDecimal("3000"),
+                valueType = "AMOUNT",
+                buyScope = "CATEGORY",
+                rewardScope = "CATEGORY",
+                minPurchase = BigDecimal.ZERO,
+                channel = "POS",
+                visibility = "ALL_OUTLET",
+                createdBy = seederUser,
+                createdDate = now
+            )
+        )
+        categories.getOrNull(3)?.let { category ->
+            promotionBuyCategoryRepository.save(PromotionBuyCategory(promotionId = promoItemAmt.id, categoryId = category.id))
+            log.info("[SEED] PromotionBuyCategory: ${promoItemAmt.name} -> ${category.name}")
+        }
+        log.info("[SEED] Promotion: ${promoItemAmt.name}")
+
+        // 5. BUY_X_GET_Y, rewardType=FREE, self-referential buyScope=PRODUCT rewardScope=PRODUCT
+        val promoBuyGetFree = promotionRepository.save(
+            Promotion(
+                merchantId = merchantId,
+                name = "Buy 2 Get 1 Kopi Susu Signature",
+                promoType = "BUY_X_GET_Y",
+                priority = 5,
+                canCombine = true,
+                isActive = true,
+                buyQty = 2,
+                getQty = 1,
+                buyScope = "PRODUCT",
+                rewardType = "FREE",
+                rewardScope = "PRODUCT",
+                isMultiplied = true,
+                minPurchase = BigDecimal.ZERO,
+                channel = "POS",
+                visibility = "ALL_OUTLET",
+                createdBy = seederUser,
+                createdDate = now
+            )
+        )
+        products.getOrNull(0)?.let { product ->
+            promotionBuyProductRepository.save(PromotionBuyProduct(promotionId = promoBuyGetFree.id, productId = product.id))
+            promotionRewardProductRepository.save(PromotionRewardProduct(promotionId = promoBuyGetFree.id, productId = product.id))
+            log.info("[SEED] PromotionBuyProduct/RewardProduct: ${promoBuyGetFree.name} -> ${product.name}")
+        }
+        log.info("[SEED] Promotion: ${promoBuyGetFree.name}")
+
+        // 6. BUY_X_GET_Y, rewardType=PERCENTAGE, buyScope=PRODUCT rewardScope=CATEGORY
+        val promoBuyGetPct = promotionRepository.save(
+            Promotion(
+                merchantId = merchantId,
+                name = "Buy Kopi Susu Get Camilan 50%",
+                promoType = "BUY_X_GET_Y",
+                priority = 6,
+                canCombine = true,
+                isActive = true,
+                buyQty = 1,
+                getQty = 1,
+                buyScope = "PRODUCT",
+                rewardType = "PERCENTAGE",
+                rewardValue = BigDecimal("50"),
+                rewardScope = "CATEGORY",
+                isMultiplied = false,
+                minPurchase = BigDecimal.ZERO,
+                channel = "POS",
+                visibility = "ALL_OUTLET",
+                createdBy = seederUser,
+                createdDate = now
+            )
+        )
+        products.getOrNull(0)?.let { product ->
+            promotionBuyProductRepository.save(PromotionBuyProduct(promotionId = promoBuyGetPct.id, productId = product.id))
+        }
+        categories.getOrNull(3)?.let { category ->
+            promotionRewardCategoryRepository.save(PromotionRewardCategory(promotionId = promoBuyGetPct.id, categoryId = category.id))
+        }
+        log.info("[SEED] Promotion: ${promoBuyGetPct.name}")
+
+        // 7. BUY_X_GET_Y, rewardType=AMOUNT, buyScope=CATEGORY rewardScope=ALL
+        val promoBuyGetAmt = promotionRepository.save(
+            Promotion(
+                merchantId = merchantId,
+                name = "Buy Minuman Panas Get Potongan 5rb",
+                promoType = "BUY_X_GET_Y",
+                priority = 7,
+                canCombine = true,
+                isActive = true,
+                buyQty = 2,
+                getQty = 1,
+                buyScope = "CATEGORY",
+                rewardType = "AMOUNT",
+                rewardValue = BigDecimal("5000"),
+                rewardScope = "ALL",
+                isMultiplied = false,
+                minPurchase = BigDecimal.ZERO,
+                channel = "POS",
+                visibility = "ALL_OUTLET",
+                createdBy = seederUser,
+                createdDate = now
+            )
+        )
+        categories.getOrNull(0)?.let { category ->
+            promotionBuyCategoryRepository.save(PromotionBuyCategory(promotionId = promoBuyGetAmt.id, categoryId = category.id))
+            log.info("[SEED] PromotionBuyCategory: ${promoBuyGetAmt.name} -> ${category.name}")
+        }
+        log.info("[SEED] Promotion: ${promoBuyGetAmt.name}")
+
+        // 8. BUY_X_GET_Y, rewardType=FIXED_PRICE, buyScope=ALL rewardScope=PRODUCT
+        val promoBuyGetFixed = promotionRepository.save(
+            Promotion(
+                merchantId = merchantId,
+                name = "Buy Apapun Get Nasi Goreng 20rb",
+                promoType = "BUY_X_GET_Y",
+                priority = 8,
+                canCombine = true,
+                isActive = true,
+                buyQty = 1,
+                getQty = 1,
+                buyScope = "ALL",
+                rewardType = "FIXED_PRICE",
+                rewardValue = BigDecimal("20000"),
+                rewardScope = "PRODUCT",
+                isMultiplied = false,
+                minPurchase = BigDecimal.ZERO,
+                channel = "POS",
+                visibility = "ALL_OUTLET",
+                createdBy = seederUser,
+                createdDate = now
+            )
+        )
+        products.getOrNull(5)?.let { product ->
+            promotionRewardProductRepository.save(PromotionRewardProduct(promotionId = promoBuyGetFixed.id, productId = product.id))
+            log.info("[SEED] PromotionRewardProduct: ${promoBuyGetFixed.name} -> ${product.name}")
+        }
+        log.info("[SEED] Promotion: ${promoBuyGetFixed.name}")
     }
 
     // ─────────────────────────────────────────────────────────────

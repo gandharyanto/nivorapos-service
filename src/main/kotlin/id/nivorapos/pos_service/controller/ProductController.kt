@@ -87,6 +87,16 @@ class ProductController(
         }
     }
 
+    @GetMapping("/{productId}/option-groups")
+    @PreAuthorize("hasAuthority('PRODUCT_VIEW')")
+    fun optionGroups(@PathVariable productId: Long): ResponseEntity<ApiResponse<ProductOptionGroupsData>> {
+        return try {
+            ResponseEntity.ok(productService.getOptionGroups(productId))
+        } catch (e: Exception) {
+            ResponseEntity.status(404).body(ApiResponse.error(e.message ?: "Not found"))
+        }
+    }
+
     // ─── Variant ──────────────────────────────────────────────────────────────
 
     @PostMapping("/{productId}/variant/add")

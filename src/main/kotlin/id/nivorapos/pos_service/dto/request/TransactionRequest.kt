@@ -7,7 +7,9 @@ data class TransactionRequest(
     val transactionOrigin: String? = null,
     val paymentMethod: String? = null,
     val priceIncludeTax: Boolean = false,
+    @JsonAlias("grossAmount")
     val subTotal: String = "0",
+    val netAmount: String = "0",
     val totalAmount: String = "0",
     val serviceChargePercentage: String = "0",
     val serviceChargeAmount: String = "0",
@@ -27,6 +29,9 @@ data class TransactionRequest(
     val discountId: Long? = null,
     val discountCode: String? = null,
     val customerId: Long? = null,
+    /** Promosi yang dipilih/diterapkan oleh mobile FE. Server hanya memvalidasi & menghitung ulang
+     *  promosi-promosi ini, bukan auto-discover semua promosi aktif yang eligible. */
+    val appliedPromotionIds: List<Long> = emptyList(),
 
     @JsonAlias("transactionItems")
     val items: List<TransactionItemRequest> = emptyList()

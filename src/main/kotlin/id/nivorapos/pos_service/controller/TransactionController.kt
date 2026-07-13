@@ -28,8 +28,12 @@ class TransactionController(
         @RequestParam(defaultValue = "10") size: Int,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) startDate: LocalDate?,
         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) endDate: LocalDate?,
+        @RequestParam(required = false) sortBy: String?,
+        @RequestParam(required = false) sortType: String?,
     ): ResponseEntity<PagedResponse<TransactionListResponse>> {
-        return ResponseEntity.ok(transactionService.list(page, size, startDate?.atStartOfDay(), endDate?.atTime(23, 59, 59)))
+        return ResponseEntity.ok(
+            transactionService.list(page, size, startDate?.atStartOfDay(), endDate?.atTime(23, 59, 59), sortBy, sortType)
+        )
     }
 
     @GetMapping("/detail/{id}")

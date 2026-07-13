@@ -6,6 +6,7 @@ import id.nivorapos.pos_service.dto.response.*
 import id.nivorapos.pos_service.entity.*
 import id.nivorapos.pos_service.repository.*
 import id.nivorapos.pos_service.security.SecurityUtils
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
@@ -24,6 +25,7 @@ class PromotionService(
     private val promotionOutletRepository: PromotionOutletRepository,
     private val psgsCredentialService: PsgsCredentialService
 ) {
+    private val log = LoggerFactory.getLogger(PromotionService::class.java)
 
     fun list(): ApiResponse<List<PromotionResponse>> {
         val merchantId = SecurityUtils.getMerchantIdFromContext()
@@ -185,6 +187,42 @@ class PromotionService(
     }
 
     /**
+     * GET /pos/promotion/active
+     * Promosi yang sedang berlaku saat ini (aktif, dalam rentang tanggal, channel POS, hari valid).
+     * Dipakai POS untuk menampilkan badge promo di layar produk, tanpa konteks transaksi.
+     */
+    fun listActive(): ApiResponse<List<PromotionResponse>> {
+        val merchantId = SecurityUtils.getMerchantIdFromContext()
+        val now = LocalDateTime.now()
+        val today = now.dayOfWeek
+
+        val promos = promotionRepository.findByMerchantIdAndDeletedDateIsNullOrderByPriorityAsc(merchantId)
+            .filter { promo ->
+                promo.isActive &&
+                (promo.startDate == null || !promo.startDate!!.isAfter(now)) &&
+                (promo.endDate == null || !promo.endDate!!.isBefore(now)) &&
+                (promo.channel == "POS" || promo.channel == "BOTH") &&
+                (promo.validDays == null || today.name in promo.validDays!!.split(",").map { it.trim().uppercase() })
+            }
+        if (promos.isEmpty()) return ApiResponse.success("Active promotions retrieved", emptyList())
+
+        val ids = promos.map { it.id }
+        val buyProductsByPromo    = promotionBuyProductRepository.findByPromotionIdIn(ids).groupBy { it.promotionId }.mapValues { (_, v) -> v.map { it.productId } }
+        val buyCategoryByPromo    = promotionBuyCategoryRepository.findByPromotionIdIn(ids).groupBy { it.promotionId }.mapValues { (_, v) -> v.map { it.categoryId } }
+        val rewardProductsByPromo = promotionRewardProductRepository.findByPromotionIdIn(ids).groupBy { it.promotionId }.mapValues { (_, v) -> v.map { it.productId } }
+        val rewardCategoryByPromo = promotionRewardCategoryRepository.findByPromotionIdIn(ids).groupBy { it.promotionId }.mapValues { (_, v) -> v.map { it.categoryId } }
+        val outletsByPromo        = promotionOutletRepository.findByPromotionIdIn(ids).groupBy { it.promotionId }.mapValues { (_, v) -> v.map { it.outletId } }
+
+        return ApiResponse.success("Active promotions retrieved", promos.map {
+            buildResponse(it,
+                buyProductsByPromo[it.id] ?: emptyList(), buyCategoryByPromo[it.id] ?: emptyList(),
+                rewardProductsByPromo[it.id] ?: emptyList(), rewardCategoryByPromo[it.id] ?: emptyList(),
+                outletsByPromo[it.id] ?: emptyList()
+            )
+        })
+    }
+
+    /**
      * Auto-apply semua promosi aktif untuk merchant.
      * Dipanggil dari TransactionService saat transaksi dibuat.
      * Mengembalikan list promosi yang diterapkan beserta total promoAmount.
@@ -193,37 +231,65 @@ class PromotionService(
         merchantId: Long,
         transactionTotal: BigDecimal,
         outletId: Long?,
-        items: List<DiscountValidateItemRequest>
+        items: List<DiscountValidateItemRequest>,
+        discountAmount: BigDecimal = BigDecimal.ZERO,
+        selectedPromotionIds: List<Long> = emptyList()
     ): Pair<BigDecimal, List<AppliedPromotion>> {
         val now = LocalDateTime.now()
         val today = now.dayOfWeek
 
+        // Tidak auto-discover semua promosi aktif — hanya validasi & hitung ulang promosi
+        // yang sudah dipilih/diterapkan mobile FE (appliedPromotionIds). Urutan tetap mirror
+        // mobile PromotionOrchestrator.evaluateAll(): tier BUY_X_GET_Y+FREE dievaluasi lebih
+        // dulu, lalu priority ascending, tie-break by id ascending.
+        val selectedIdSet = selectedPromotionIds.toSet()
         val promotions = promotionRepository
             .findByMerchantIdAndDeletedDateIsNullOrderByPriorityAsc(merchantId)
-            .filter { it.isActive }
+            .filter { it.isActive && it.id in selectedIdSet }
+            .sortedWith(
+                compareBy<Promotion> { if (it.promoType == "BUY_X_GET_Y" && it.rewardType == "FREE") 0 else 1 }
+                    .thenBy { it.priority }
+                    .thenBy { it.id }
+            )
+
+        log.debug("[PROMO] validating selectedPromotionIds=$selectedPromotionIds merchantId=$merchantId transactionTotal=$transactionTotal discountAmount=$discountAmount candidates=${promotions.map { it.id }}")
 
         val applied = mutableListOf<AppliedPromotion>()
         var totalPromo = BigDecimal.ZERO
         var hasNonCombine = false
 
         for (promo in promotions) {
-            if (hasNonCombine) break
+            if (hasNonCombine) {
+                log.debug("[PROMO] ${promo.name} (id=${promo.id}) skipped: a non-combinable promo already applied")
+                break
+            }
 
-            // Cek kondisi eligibility
-            if (!isEligible(promo, transactionTotal, outletId, now, today, items)) continue
+            // Cek kondisi eligibility (isEligible melog alasan spesifik saat reject)
+            if (!isEligible(promo, transactionTotal, outletId, now, today, items)) {
+                continue
+            }
 
             // Jika canCombine=false dan sudah ada yang diterapkan, skip
-            if (!promo.canCombine && applied.isNotEmpty()) continue
+            if (!promo.canCombine && applied.isNotEmpty()) {
+                log.debug("[PROMO] ${promo.name} (id=${promo.id}) skipped: canCombine=false and other promos already applied")
+                continue
+            }
 
-            val amount = computePromoAmount(promo, transactionTotal, items)
-            if (amount <= BigDecimal.ZERO) continue
+            val effectiveTotal = transactionTotal.subtract(discountAmount).subtract(totalPromo).max(BigDecimal.ZERO)
+            val amount = computePromoAmount(promo, effectiveTotal, items)
+            if (amount <= BigDecimal.ZERO) {
+                log.debug("[PROMO] ${promo.name} (id=${promo.id}) computed amount=$amount, skipped (not positive)")
+                continue
+            }
 
+            log.debug("[PROMO] applied ${promo.name} (id=${promo.id}) type=${promo.promoType} valueType=${promo.valueType} effectiveTotal=$effectiveTotal -> amount=$amount")
             applied.add(AppliedPromotion(promo.id, promo.name, amount))
             totalPromo = totalPromo.add(amount)
 
             if (!promo.canCombine) hasNonCombine = true
         }
 
+        log.debug("[PROMO] autoApply result: applied=${applied.map { "${it.promotionId}:${it.promoAmount}" }} totalPromo=$totalPromo")
         return Pair(totalPromo.setScale(2, RoundingMode.HALF_UP), applied)
     }
 
@@ -237,20 +303,37 @@ class PromotionService(
         today: DayOfWeek,
         items: List<DiscountValidateItemRequest>
     ): Boolean {
-        if (promo.startDate != null && now.isBefore(promo.startDate)) return false
-        if (promo.endDate != null && now.isAfter(promo.endDate)) return false
+        fun reject(reason: String): Boolean {
+            log.debug("[PROMO] ${promo.name} (id=${promo.id}) rejected: $reason")
+            return false
+        }
+
+        if (promo.startDate != null && now.isBefore(promo.startDate)) {
+            return reject("startDate=${promo.startDate} is after now=$now")
+        }
+        if (promo.endDate != null && now.isAfter(promo.endDate)) {
+            return reject("endDate=${promo.endDate} is before now=$now")
+        }
         if (promo.validDays != null) {
             val days = promo.validDays!!.split(",").map { it.trim().uppercase() }
-            if (today.name !in days) return false
+            if (today.name !in days) return reject("today=${today.name} not in validDays=$days")
         }
-        if (promo.channel !in listOf("POS", "BOTH")) return false
-        if (!isOutletEligible(promo, outletId)) return false
-        if (transactionTotal < promo.minPurchase) return false
+        if (promo.channel !in listOf("POS", "BOTH")) {
+            return reject("channel=${promo.channel} does not allow POS")
+        }
+        if (!isOutletEligible(promo, outletId)) {
+            return reject("outlet not eligible: visibility=${promo.visibility} requestOutletId=$outletId")
+        }
+        if (transactionTotal < promo.minPurchase) {
+            return reject("transactionTotal=$transactionTotal < minPurchase=${promo.minPurchase}")
+        }
 
         if (promo.promoType == "BUY_X_GET_Y") {
             val buyQty = promo.buyQty ?: 1
             val totalBuyQty = countEligibleBuyQty(promo, items)
-            if (totalBuyQty < buyQty) return false
+            if (totalBuyQty < buyQty) {
+                return reject("totalBuyQty=$totalBuyQty < buyQty=$buyQty (buyScope=${promo.buyScope})")
+            }
         }
 
         return true
@@ -258,20 +341,24 @@ class PromotionService(
 
     private fun isOutletEligible(promo: Promotion, outletId: Long?): Boolean {
         if (promo.visibility == "ALL_OUTLET") return true
-        if (outletId == null) return false
+        // outletId tidak dikirim (mis. mobile belum mengirim outletId) -> anggap berlaku di semua outlet.
+        if (outletId == null) return true
         return promotionOutletRepository.existsByPromotionIdAndOutletId(promo.id, outletId)
     }
 
-    private fun countEligibleBuyQty(promo: Promotion, items: List<DiscountValidateItemRequest>): Int {
+    private fun countEligibleBuyQty(promo: Promotion, items: List<DiscountValidateItemRequest>): Int =
+        getBuyEligibleItems(promo, items).sumOf { it.qty }
+
+    private fun getBuyEligibleItems(promo: Promotion, items: List<DiscountValidateItemRequest>): List<DiscountValidateItemRequest> {
         val buyProductIds = promotionBuyProductRepository.findByPromotionId(promo.id).map { it.productId }.toSet()
         val buyCategoryIds = promotionBuyCategoryRepository.findByPromotionId(promo.id).map { it.categoryId }.toSet()
 
-        return items.sumOf { item ->
+        return items.filter { item ->
             when (promo.buyScope) {
-                "ALL" -> item.qty
-                "PRODUCT" -> if (item.productId in buyProductIds) item.qty else 0
-                "CATEGORY" -> if (item.categoryIds.toSet().intersect(buyCategoryIds).isNotEmpty()) item.qty else 0
-                else -> 0
+                "ALL" -> true
+                "PRODUCT" -> item.productId in buyProductIds
+                "CATEGORY" -> item.categoryIds.toSet().intersect(buyCategoryIds).isNotEmpty()
+                else -> false
             }
         }
     }
@@ -337,45 +424,62 @@ class PromotionService(
         }
     }
 
+    /**
+     * Mirrors mobile BuyXGetYEvaluator (pos-core): unit-level cheapest-first reward
+     * allocation + qualifier/reward overlap reservation, instead of naively taking whole
+     * cart lines. See docs/POS_ENDPOINT_AUDIT.md Temuan #9 for the bugs this replaces.
+     */
     private fun computeBuyXGetY(promo: Promotion, items: List<DiscountValidateItemRequest>): BigDecimal {
         val buyQty = promo.buyQty ?: return BigDecimal.ZERO
         val getQty = promo.getQty ?: return BigDecimal.ZERO
         val rewardType = promo.rewardType ?: return BigDecimal.ZERO
 
-        val totalBuyQty = countEligibleBuyQty(promo, items)
+        val buyItems = getBuyEligibleItems(promo, items)
+        val totalBuyQty = buyItems.sumOf { it.qty }
         if (totalBuyQty < buyQty) return BigDecimal.ZERO
 
-        // Hitung multiplier
+        val rewardItemsRaw = getRewardEligibleItems(promo, items)
+        if (rewardItemsRaw.isEmpty()) return BigDecimal.ZERO
+
+        // Reserve buy-only qualifier units before they can double as reward units
+        // (e.g. buyScope=ALL + rewardScope=PRODUCT[X], X juga salah satu buy item).
+        val availableRewardItems = buildAvailableRewardItems(buyItems, rewardItemsRaw, buyQty)
+        val availableRewardQty = availableRewardItems.sumOf { it.qty }
+        if (availableRewardQty < getQty) return BigDecimal.ZERO
+
         val multiplier = if (promo.isMultiplied) {
-            floor(totalBuyQty.toDouble() / (buyQty + getQty)).toInt().coerceAtLeast(1)
+            val buyCycles = floor(totalBuyQty.toDouble() / buyQty).toInt()
+            val rewardCycles = floor(availableRewardQty.toDouble() / getQty).toInt()
+            minOf(buyCycles, rewardCycles).coerceAtLeast(1)
         } else 1
 
-        val rewardItems = getRewardEligibleItems(promo, items)
-        if (rewardItems.isEmpty()) return BigDecimal.ZERO
+        val effectiveRewardQty = minOf(getQty * multiplier, availableRewardQty)
+        if (effectiveRewardQty <= 0) return BigDecimal.ZERO
+
+        val sortedRewardItems = availableRewardItems.sortedBy { it.price }
 
         return when (rewardType) {
-            "FREE" -> {
-                // Ambil item dengan harga terendah sebagai reward gratis
-                val lowestPrice = rewardItems.minOf { it.price }
-                lowestPrice.multiply(BigDecimal(getQty * multiplier))
+            "FREE" -> allocateUnits(sortedRewardItems, effectiveRewardQty) { item, units ->
+                item.price.multiply(BigDecimal(units))
             }
             "PERCENTAGE" -> {
                 val rewardValue = promo.rewardValue ?: return BigDecimal.ZERO
-                val rewardSubtotal = rewardItems.take(getQty * multiplier)
-                    .sumOf { it.price.multiply(BigDecimal(it.qty)).toDouble() }
-                    .let { BigDecimal(it) }
+                val rewardSubtotal = allocateUnits(sortedRewardItems, effectiveRewardQty) { item, units ->
+                    item.price.multiply(BigDecimal(units))
+                }
                 rewardSubtotal.multiply(rewardValue).divide(BigDecimal("100"), 2, RoundingMode.HALF_UP)
             }
             "AMOUNT" -> {
                 val rewardValue = promo.rewardValue ?: return BigDecimal.ZERO
-                rewardValue.multiply(BigDecimal(getQty * multiplier))
+                allocateUnits(sortedRewardItems, effectiveRewardQty) { item, units ->
+                    rewardValue.min(item.price).multiply(BigDecimal(units))
+                }
             }
             "FIXED_PRICE" -> {
                 val fixedPrice = promo.rewardValue ?: return BigDecimal.ZERO
-                val rewardSubtotal = rewardItems.take(getQty * multiplier)
-                    .sumOf { it.price.multiply(BigDecimal(it.qty)).toDouble() }
-                    .let { BigDecimal(it) }
-                (rewardSubtotal - fixedPrice.multiply(BigDecimal(getQty * multiplier))).max(BigDecimal.ZERO)
+                allocateUnits(sortedRewardItems, effectiveRewardQty) { item, units ->
+                    (item.price - fixedPrice).max(BigDecimal.ZERO).multiply(BigDecimal(units))
+                }
             }
             else -> BigDecimal.ZERO
         }
@@ -664,4 +768,60 @@ class PromotionService(
             endDate = promo.endDate
         )
     }
+}
+
+/**
+ * Walks [items] (already cheapest-first) and sums [perUnitAmount] for exactly
+ * [qtyNeeded] units total, clamping the units taken from each line to its own qty
+ * instead of taking whole lines regardless of how many units are actually needed.
+ */
+internal fun allocateUnits(
+    items: List<DiscountValidateItemRequest>,
+    qtyNeeded: Int,
+    perUnitAmount: (DiscountValidateItemRequest, Int) -> BigDecimal
+): BigDecimal {
+    var unitsLeft = qtyNeeded
+    var total = BigDecimal.ZERO
+    for (item in items) {
+        if (unitsLeft <= 0) break
+        val units = minOf(unitsLeft, item.qty)
+        if (units > 0) {
+            total = total.add(perUnitAmount(item, units))
+            unitsLeft -= units
+        }
+    }
+    return total
+}
+
+/**
+ * Reserves buy-only-eligible units so they aren't also counted as reward units when
+ * buyScope and rewardScope overlap on the same product(s). Mirrors mobile
+ * BuyXGetYEvaluator.buildAvailableRewardItems (mobile-apps-cashlez pos-core).
+ */
+internal fun buildAvailableRewardItems(
+    buyItems: List<DiscountValidateItemRequest>,
+    rewardItems: List<DiscountValidateItemRequest>,
+    buyQty: Int
+): List<DiscountValidateItemRequest> {
+    val buyProductIds = buyItems.map { it.productId }.toSet()
+    val overlapping = rewardItems.filter { it.productId in buyProductIds }
+    val nonOverlapping = rewardItems.filter { it.productId !in buyProductIds }
+    if (overlapping.isEmpty()) return nonOverlapping.filter { it.qty > 0 }
+
+    val rewardProductIds = rewardItems.map { it.productId }.toSet()
+    val nonRewardBuyQty = buyItems.filter { it.productId !in rewardProductIds }.sumOf { it.qty }
+    val unmetBuyQty = maxOf(0, buyQty - nonRewardBuyQty)
+    if (unmetBuyQty == 0) return (overlapping + nonOverlapping).filter { it.qty > 0 }
+
+    val adjustedOverlap = if (overlapping.size > 1) {
+        var reserveLeft = unmetBuyQty
+        overlapping.sortedByDescending { it.price }.map { item ->
+            val reserved = minOf(reserveLeft, item.qty)
+            reserveLeft -= reserved
+            item.copy(qty = item.qty - reserved)
+        }
+    } else {
+        overlapping.map { item -> item.copy(qty = (item.qty - minOf(unmetBuyQty, item.qty)).coerceAtLeast(0)) }
+    }
+    return (adjustedOverlap + nonOverlapping).filter { it.qty > 0 }
 }

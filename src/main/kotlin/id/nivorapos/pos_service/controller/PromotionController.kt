@@ -24,6 +24,16 @@ class PromotionController(
         }
     }
 
+    @GetMapping("/active")
+    @PreAuthorize("hasAuthority('PROMOTION_VIEW')")
+    fun active(): ResponseEntity<ApiResponse<List<PromotionResponse>>> {
+        return try {
+            ResponseEntity.ok(promotionService.listActive())
+        } catch (e: Exception) {
+            ResponseEntity.status(400).body(ApiResponse.error(e.message ?: "Failed"))
+        }
+    }
+
     @GetMapping("/detail/{id}")
     @PreAuthorize("hasAuthority('PROMOTION_VIEW')")
     fun detail(@PathVariable id: Long): ResponseEntity<ApiResponse<PromotionResponse>> {

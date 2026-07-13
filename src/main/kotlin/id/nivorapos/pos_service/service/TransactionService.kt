@@ -3,6 +3,7 @@ package id.nivorapos.pos_service.service
 import tools.jackson.databind.ObjectMapper
 import id.nivorapos.pos_service.dto.request.DiscountValidateItemRequest
 import id.nivorapos.pos_service.dto.request.InitiatePaymentRequest
+import id.nivorapos.pos_service.dto.request.TransactionItemRequest
 import id.nivorapos.pos_service.dto.request.TransactionRequest
 import id.nivorapos.pos_service.dto.request.TransactionUpdateRequest
 import id.nivorapos.pos_service.dto.response.*
@@ -50,10 +51,17 @@ class TransactionService(
         page: Int,
         size: Int,
         startDate: LocalDateTime?,
-        endDate: LocalDateTime?
+        endDate: LocalDateTime?,
+        sortBy: String? = null,
+        sortType: String? = null
     ): PagedResponse<TransactionListResponse> {
         val merchantId = SecurityUtils.getMerchantIdFromContext()
-        val pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdDate"))
+        val sortProperty = when (sortBy) {
+            "totalAmount", "status", "trxId" -> sortBy
+            else -> "createdDate"
+        }
+        val sortDirection = if (sortType?.uppercase() == "ASC") Sort.Direction.ASC else Sort.Direction.DESC
+        val pageable = PageRequest.of(page, size, Sort.by(sortDirection, sortProperty))
 
         val start = startDate ?: LocalDateTime.of(2000, 1, 1, 0, 0)
         val end = endDate ?: LocalDateTime.now().plusDays(1)
@@ -84,6 +92,17 @@ class TransactionService(
         val username = SecurityUtils.getUsernameFromContext()
         val now = LocalDateTime.now()
 
+        log.debug(
+            "[REQUEST] mobile request: paymentMethod=${request.paymentMethod} priceIncludeTax=${request.priceIncludeTax} " +
+                "outletId=${request.outletId} customerId=${request.customerId} " +
+                "subTotal(gross)=${request.subTotal} netAmount=${request.netAmount} totalAmount=${request.totalAmount} " +
+                "totalTax=${request.totalTax} totalServiceCharge=${request.totalServiceCharge} totalRounding=${request.totalRounding} " +
+                "discountId=${request.discountId} discountCode=${request.discountCode} appliedPromotionIds=${request.appliedPromotionIds} " +
+                "items=${request.items.map { "productId=${it.productId} qty=${it.qty} price=${it.price} totalPrice=${it.totalPrice} " +
+                    "variantId=${it.variantId} modifierIds=${it.effectiveModifierIds} promotions=${it.promotions.map { p -> "${p.id}:${p.amt}" }} " +
+                    "taxes=${it.taxes.map { t -> "${t.id}:${t.amt}" }}" }}"
+        )
+
         // Build discountItems early — needed for discount/promo resolution and SC basis
         val productIds = request.items.map { it.productId }.distinct()
         val categoryIdsByProduct = if (productIds.isEmpty()) emptyMap()
@@ -93,7 +112,7 @@ class TransactionService(
             DiscountValidateItemRequest(
                 productId = itemReq.productId,
                 qty = itemReq.qty,
-                price = parseBD(itemReq.price),
+                price = computeAdjustedUnitPrice(resolveItemTotalPrice(itemReq), itemReq.qty),
                 categoryIds = categoryIdsByProduct[itemReq.productId].orEmpty()
             )
         }
@@ -102,6 +121,7 @@ class TransactionService(
         val prelimSubTotal = discountItems.fold(BigDecimal.ZERO) { acc, item ->
             acc.add(item.price.multiply(BigDecimal(item.qty)))
         }
+        log.debug("[CALC] merchantId=$merchantId requestDiscountId=${request.discountId} requestDiscountCode=${request.discountCode} prelimSubTotal=$prelimSubTotal")
 
         // Resolve discount (validate + hitung amount, belum catat usage)
         val (discountAmount, appliedDiscount) = discountService.resolveForTransaction(
@@ -114,18 +134,25 @@ class TransactionService(
             items = discountItems
         )
 
-        // Auto-apply promotions
-        val (promoAmount, _) = promotionService.autoApply(
+        // Validasi & hitung ulang promosi yang dipilih mobile FE (bukan auto-discover semua yang eligible)
+        val (promoAmount, appliedPromotions) = promotionService.autoApply(
             merchantId = merchantId,
             transactionTotal = prelimSubTotal,
             outletId = request.outletId,
-            items = discountItems
+            items = discountItems,
+            discountAmount = discountAmount,
+            selectedPromotionIds = request.appliedPromotionIds
+        )
+        log.debug(
+            "[CALC] discount=${appliedDiscount?.let { "${it.id}:${it.name}" }} discountAmount=$discountAmount " +
+                "promotions=${appliedPromotions.map { "${it.promotionId}:${it.promotionName}=${it.promoAmount}" }} promoAmount=$promoAmount " +
+                "totalDeduction=${discountAmount.add(promoAmount)}"
         )
 
         // Pre-fetch all per-item entities once to avoid N+1 in compute/validate and item save
-        val taxIds = request.items.asSequence().mapNotNull { it.taxId }.toSet()
+        val taxIds = request.items.asSequence().mapNotNull { it.effectiveTaxId }.toSet()
         val variantIds = request.items.asSequence().mapNotNull { it.variantId }.toSet()
-        val modifierIds = request.items.asSequence().flatMap { it.modifierIds.asSequence() }.toSet()
+        val modifierIds = request.items.asSequence().flatMap { it.effectiveModifierIds.asSequence() }.toSet()
         val taxesById = if (taxIds.isEmpty()) emptyMap()
             else taxRepository.findAllById(taxIds).associateBy { it.id }
         val productsById = if (productIds.isEmpty()) emptyMap()
@@ -206,10 +233,10 @@ class TransactionService(
         }
 
         // Save items
-        val pendingModifiers = ArrayList<TransactionItemModifier>(request.items.sumOf { it.modifierIds.size })
+        val pendingModifiers = ArrayList<TransactionItemModifier>(request.items.sumOf { it.effectiveModifierIds.size })
         request.items.forEach { itemReq ->
             val product = productsById[itemReq.productId]
-            val tax = itemReq.taxId?.let { taxesById[it] }
+            val tax = itemReq.effectiveTaxId?.let { taxesById[it] }
             val itemPrice = parseBD(itemReq.price)
             val totalPrice = itemPrice.multiply(BigDecimal(itemReq.qty))
             val snapshot = if (product != null) objectMapper.writeValueAsString(product) else null
@@ -219,7 +246,7 @@ class TransactionService(
             validateVariantSelection(itemReq.productId, itemReq.variantId)
 
             // Resolve modifiers
-            val selectedModifiers = itemReq.modifierIds.mapNotNull { modifiersById[it] }
+            val selectedModifiers = itemReq.effectiveModifierIds.mapNotNull { modifiersById[it] }
             validateModifierSelection(itemReq.productId, selectedModifiers.map { it.id })
 
             val variantAdditionalPrice = variant?.additionalPrice ?: BigDecimal.ZERO
@@ -237,10 +264,10 @@ class TransactionService(
                 variantAdditionalPrice = variantAdditionalPrice,
                 modifiersAdditionalPrice = modifiersAdditionalPrice,
                 productSnapshot = snapshot,
-                taxId = itemReq.taxId,
+                taxId = itemReq.effectiveTaxId,
                 taxName = tax?.name,
                 taxPercentage = tax?.percentage ?: BigDecimal.ZERO,
-                taxAmount = parseBD(itemReq.taxAmount),
+                taxAmount = parseBD(itemReq.effectiveTaxAmount),
                 createdBy = username,
                 createdDate = now,
                 modifiedBy = username,
@@ -502,22 +529,27 @@ class TransactionService(
         var calculatedTotalTax = BigDecimal.ZERO
 
         for (itemReq in request.items) {
-            val itemPrice = parseBD(itemReq.price)
-            val itemTotalPrice = itemPrice.multiply(BigDecimal(itemReq.qty))
+            val itemTotalPrice = resolveItemTotalPrice(itemReq)
             calculatedSubTotal = calculatedSubTotal.add(itemTotalPrice)
 
-            val clientTaxAmount = parseBD(itemReq.taxAmount)
-            if (itemReq.taxId != null) {
-                val tax = taxesById[itemReq.taxId] ?: taxRepository.findById(itemReq.taxId).orElse(null)
+            val itemPromotionAmount = itemReq.promotions.fold(BigDecimal.ZERO) { acc, promo ->
+                acc.add(parseBD(promo.amt ?: "0"))
+            }
+            val itemTaxableBase = computeItemTaxableBase(itemTotalPrice, itemPromotionAmount)
+
+            val clientTaxAmount = parseBD(itemReq.effectiveTaxAmount)
+            val effectiveTaxId = itemReq.effectiveTaxId
+            if (effectiveTaxId != null) {
+                val tax = taxesById[effectiveTaxId] ?: taxRepository.findById(effectiveTaxId).orElse(null)
                 if (tax != null && tax.percentage > BigDecimal.ZERO) {
                     val expectedTaxAmount = if (isPriceIncludeTax) {
-                        itemTotalPrice.multiply(tax.percentage)
+                        itemTaxableBase.multiply(tax.percentage)
                             .divide(hundred.add(tax.percentage), 2, RoundingMode.HALF_UP)
                     } else {
-                        itemTotalPrice.multiply(tax.percentage)
+                        itemTaxableBase.multiply(tax.percentage)
                             .divide(hundred, 2, RoundingMode.HALF_UP)
                     }
-                    log.debug("[VALIDATE] item productId=${itemReq.productId} qty=${itemReq.qty} price=${itemReq.price} totalPrice=$itemTotalPrice taxPct=${tax.percentage} expectedTax=$expectedTaxAmount clientTax=$clientTaxAmount")
+                    log.debug("[VALIDATE] item productId=${itemReq.productId} qty=${itemReq.qty} price=${itemReq.price} totalPrice=$itemTotalPrice promotionAmount=$itemPromotionAmount taxableBase=$itemTaxableBase taxPct=${tax.percentage} expectedTax=$expectedTaxAmount clientTax=$clientTaxAmount")
                     if (clientTaxAmount.subtract(expectedTaxAmount).abs() > tolerance) {
                         log.warn("[VALIDATE] FAIL taxAmount productId=${itemReq.productId}: expected=$expectedTaxAmount got=$clientTaxAmount")
                         return Pair(
@@ -527,7 +559,7 @@ class TransactionService(
                     }
                     calculatedTotalTax = calculatedTotalTax.add(expectedTaxAmount)
                 } else {
-                    log.debug("[VALIDATE] item productId=${itemReq.productId} no tax (taxId=${itemReq.taxId} pct=${tax?.percentage})")
+                    log.debug("[VALIDATE] item productId=${itemReq.productId} no tax (taxId=$effectiveTaxId pct=${tax?.percentage})")
                 }
             } else {
                 log.debug("[VALIDATE] item productId=${itemReq.productId} no taxId, using clientTaxAmount=$clientTaxAmount")
@@ -551,23 +583,31 @@ class TransactionService(
 
         // Compute service charge from DB, using the configured source/basis
         val netAfterDiscount = (calculatedSubTotal - discountAmount - promoAmount).max(BigDecimal.ZERO)
+        val clientNetAmount = parseBD(request.netAmount)
+        log.debug("[VALIDATE] netAmount: calculated=$netAfterDiscount client=$clientNetAmount")
+        if (clientNetAmount.subtract(netAfterDiscount).abs() > tolerance) {
+            log.warn("[VALIDATE] FAIL netAmount: expected=$netAfterDiscount got=$clientNetAmount")
+            return Pair("netAmount mismatch: expected $netAfterDiscount, got $clientNetAmount", null)
+        }
         val expectedServiceCharge = if (paymentSetting?.isServiceCharge == true) {
             when {
                 paymentSetting.serviceChargeAmount > BigDecimal.ZERO ->
                     paymentSetting.serviceChargeAmount
                 paymentSetting.serviceChargePercentage > BigDecimal.ZERO -> {
+                    // Tax baseline is always after-discount per product; source only decides
+                    // whether the service charge base is pre/post discount and pre/post tax.
                     val scBase = when (paymentSetting.serviceChargeSource?.uppercase()) {
-                        "AFTER_DISCOUNT" -> netAfterDiscount
-                        "BEFORE_TAX" -> calculatedSubTotal
-                        "DPP" -> if (isPriceIncludeTax)
-                            (calculatedSubTotal - calculatedTotalTax).max(BigDecimal.ZERO)
-                        else
-                            calculatedSubTotal
-                        "AFTER_TAX" -> if (isPriceIncludeTax)
+                        "BEFORE_DISCOUNT_BEFORE_TAX" -> calculatedSubTotal
+                        "AFTER_DISCOUNT_BEFORE_TAX" -> netAfterDiscount
+                        "BEFORE_DISCOUNT_AFTER_TAX" -> if (isPriceIncludeTax)
                             calculatedSubTotal
                         else
                             calculatedSubTotal.add(calculatedTotalTax)
-                        else -> calculatedSubTotal  // legacy fallback (no source set)
+                        "AFTER_DISCOUNT_AFTER_TAX" -> if (isPriceIncludeTax)
+                            netAfterDiscount
+                        else
+                            netAfterDiscount.add(calculatedTotalTax)
+                        else -> netAfterDiscount  // legacy fallback: recommended default (no source set)
                     }
                     scBase.multiply(paymentSetting.serviceChargePercentage)
                         .divide(hundred, 2, RoundingMode.HALF_UP)
@@ -691,6 +731,15 @@ class TransactionService(
 
     private fun parseBD(value: String?): BigDecimal {
         return try { BigDecimal(value ?: "0") } catch (e: Exception) { BigDecimal.ZERO }
+    }
+
+    /**
+     * Adjusted line total for an item: prefers mobile's [TransactionItemRequest.totalPrice]
+     * (price + variant/modifier adjustments); falls back to price*qty when absent.
+     */
+    private fun resolveItemTotalPrice(itemReq: TransactionItemRequest): BigDecimal {
+        return itemReq.totalPrice?.let { parseBD(it) }
+            ?: parseBD(itemReq.price).multiply(BigDecimal(itemReq.qty))
     }
 
     private fun reduceStockForTransaction(transaction: Transaction, username: String, now: LocalDateTime) {
@@ -832,4 +881,22 @@ class TransactionService(
         private const val STOCK_MOVEMENT_TRANSACTION = "TRANSACTION"
         private const val STOCK_MOVEMENT_TRANSACTION_CANCELLED = "TRANSACTION_CANCELLED"
     }
+}
+
+/**
+ * Per-item taxable base: adjusted line total (price + variant/modifier adjustments) minus
+ * that item's own promotions, matching mobile's after-discount-per-product tax model.
+ */
+internal fun computeItemTaxableBase(totalPrice: BigDecimal, promotionAmount: BigDecimal): BigDecimal {
+    return totalPrice.subtract(promotionAmount).max(BigDecimal.ZERO)
+}
+
+/**
+ * Per-unit price used by discount/promotion qualification: the adjusted line total
+ * (price + variant/modifier adjustments) spread evenly across qty, so discount/promo
+ * engines qualify against the same basis mobile and tax validation use.
+ */
+internal fun computeAdjustedUnitPrice(totalPrice: BigDecimal, qty: Int): BigDecimal {
+    if (qty <= 0) return BigDecimal.ZERO
+    return totalPrice.divide(BigDecimal(qty), 2, RoundingMode.HALF_UP)
 }
